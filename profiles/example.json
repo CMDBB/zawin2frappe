@@ -1,0 +1,97 @@
+{
+  "name": "Example Dental Practice",
+  "_comment": [
+    "A worked template, not a working configuration. Every value below is",
+    "specific to one practice: service numbering is the payroll's convention,",
+    "agenda ids come from that install's TAGPLAN, and the label rules are the",
+    "words that practice's staff type by hand. Copy this, then derive the real",
+    "values from the database with the exploration commands noted per section.",
+    "Point ZAWIN_PROFILE (or site config 'zawin_profile') at your copy."
+  ],
+
+  "company": {
+    "name": "Example Dental Practice",
+    "abbr": "EDP",
+    "_comment": "abbr must match the Frappe Company record: ERPNext appends it to every Department name."
+  },
+
+  "branches": ["Main", "Annexe"],
+
+  "shift_types": [
+    { "name": "AM", "start_time": "07:00:00", "end_time": "14:00:00" },
+    { "name": "PM", "start_time": "14:00:00", "end_time": "21:15:00" }
+  ],
+
+  "practice_day": {
+    "start": 420,
+    "end": 1275,
+    "midday": 840,
+    "_comment": "Minutes since midnight; fallback only. Per-agenda bounds are read from TAGPLAN.Start/Ende, which differ by discipline. Check with: zawin values TAGPLAN Start"
+  },
+
+  "services": {
+    "_comment": "Payroll service code -> role and discipline. 'discipline: null' means the code is ambiguous and must be refined from ZaWin (e.g. an assistant pool spanning several disciplines). 'clinical' marks staff who work chairside.",
+    "100": { "designation": "Dentist", "discipline": "Omnipractice", "clinical": true },
+    "110": { "designation": "Orthodontist", "discipline": "Orthodontics", "clinical": true },
+    "120": { "designation": "Dental hygienist", "discipline": "Dental Hygiene", "clinical": true },
+    "200": { "designation": "Dental assistant", "discipline": null, "clinical": true },
+    "900": { "designation": "Administration", "discipline": "Administration", "clinical": false }
+  },
+
+  "admin_service": "900",
+
+  "categories": {
+    "_comment": "Names as they appear in TAGPLANTERMINKATEGORIE.Bezeichnung_1. List with: zawin categories",
+    "absence": ["Holiday", "Absent"],
+    "non_clinical": ["Training", "Meeting"]
+  },
+
+  "label_rules": [
+    ["^abs", "absence", false],
+    ["^holiday|^leave", "absence", false],
+    ["break", "break", false],
+    ["^meeting", "meeting", true],
+    ["^training|^course", "training", true],
+    ["^on.?call", "on_call", true],
+    ["^changeover|^transition", "transition", true],
+    ["^reception|^phone", "reception", true],
+    ["^admin|^back.?office", "admin", true],
+    ["^remote|^wfh", "remote", true],
+    ["^present|^pres\\b", "present", true]
+  ],
+
+  "agendas": {
+    "non_discipline": [],
+    "_comment": "TAGPLAN ids that are rooms, sites or purposes rather than a person's working day — they carry no working time. Find them with: zawin values TAGPLAN Beschreibung (look for mitArbeitszeit = 0)."
+  },
+
+  "site_behort": {
+    "_comment": "BEHORT id -> branch name, for the ids that mean a site rather than a chair. List with: zawin values BEHORT Beschreibung",
+    "1": "Main",
+    "2": "Annexe"
+  },
+
+  "thresholds": {
+    "_comment": "Defaults are reasonable starting points; verify each against your own data before trusting the output.",
+    "ortho": 0.5,
+    "reception": 0.4,
+    "min_presence_rows": 20,
+    "min_worked_rows": 30,
+    "banner_minutes": 780,
+    "dominance_margin": 30,
+    "substantial_minutes": 120,
+    "weeks_per_year": 46,
+    "fte_tolerance": 0.4
+  },
+
+  "zawin": {
+    "funktion_prophylaxis": null,
+    "_comment": "BEHANDLER.Funktion code meaning prophylaxis, if this install uses one; null disables the check. Funktion is more reliable than matching initials suffixes. Inspect with: zawin values BEHANDLER Funktion"
+  },
+
+  "overrides": {
+    "_comment": "Optional paths, relative to this file, to human-confirmed corrections the matcher cannot infer — renames, and people whose real job differs from their payroll filing. These name identifiable individuals: keep them out of any public repository.",
+    "identity_links": null,
+    "staff_scope": null
+  }
+}

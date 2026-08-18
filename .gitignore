@@ -53,3 +53,21 @@ jspm_packages/
 
 # Aider AI Chat
 .aider*
+
+# ---- ZaWin migration: never commit ------------------------------------------
+# Personnel exports carry names, addresses, birth dates and AVS social-security
+# numbers. Raw extracts and import files carry employee names and free text
+# copied out of the agenda.
+data/reference/
+data/raw/
+data/import/
+# Every derived report is regenerable, and several carry surnames
+# (fte_reconciliation, needs_review_identity). Nothing here should be committed.
+data/derived/
+
+# Database backups (the ZaWin .bak is ~8 GB)
+workdir/
+*.bak
+
+# Local connection settings
+.env

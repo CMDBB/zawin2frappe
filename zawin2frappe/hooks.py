@@ -1,4 +1,11 @@
 app_name = "zawin2frappe"
+# Custom fields this app owns. `custom_zawin_key` is what makes a re-import
+# update rather than duplicate: Shift Assignment autonames as a series, so it
+# has no natural key of its own.
+fixtures = [
+	{"dt": "Custom Field", "filters": [["module", "=", "Zawin2Frappe"]]},
+]
+
 app_title = "Zawin2Frappe"
 app_publisher = "CMDBB"
 app_description = "Migrate practice data out of the legacy ZaWin dental practice system into Frappe HR"
@@ -8,7 +15,8 @@ app_license = "gpl-3.0"
 # Apps
 # ------------------
 
-# required_apps = []
+# Employee and Shift Assignment are hrms doctypes.
+required_apps = ["frappe/hrms"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
