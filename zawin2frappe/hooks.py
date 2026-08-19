@@ -16,7 +16,16 @@ app_license = "gpl-3.0"
 # ------------------
 
 # Employee and Shift Assignment are hrms doctypes.
-required_apps = ["frappe/hrms"]
+#
+# autoshift owns the scheduling data model this import writes into: `Employee.custom_fte`
+# (pipeline/employees.py) and `Shift Location.custom_branch` (loaders/bootstrap.py) are its
+# Custom Fields, and the discipline split exists because its optimizer needs it. Without
+# autoshift installed those fields don't exist and the values are silently dropped.
+#
+# The dependency only runs this way. autoshift is a general-purpose optimizer and must never
+# require zawin2frappe — that would tie it to one legacy source system. Planned autoshift
+# work (multi-skill workforce, capability matrix) will be fed from here on the same terms.
+required_apps = ["frappe/hrms", "autoshift"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -263,4 +272,3 @@ required_apps = ["frappe/hrms"]
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-

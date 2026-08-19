@@ -12,6 +12,13 @@ bench get-app $URL_OF_THIS_REPO --branch version-16
 bench install-app zawin2frappe
 ```
 
+Requires [`frappe/hrms`](https://github.com/frappe/hrms) and
+[`autoshift`](https://github.com/CMDBB/autoshift); bench installs both automatically.
+autoshift owns the scheduling fields this import writes (`Employee.custom_fte`,
+`Shift Location.custom_branch`) and the discipline split the extraction produces, so
+without it those values have nowhere to land. The reverse is not true — autoshift is a
+general-purpose optimiser and knows nothing about ZaWin.
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
