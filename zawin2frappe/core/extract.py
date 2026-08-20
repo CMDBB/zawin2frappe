@@ -71,6 +71,7 @@ def employees(active_only: bool = False) -> pd.DataFrame:
                Vorname AS vorname_raw,
                Initialen AS initials,
                Funktion AS funktion_code,
+               FarbeTermin AS default_color,
                Gruppe AS is_group,
                Arbeitstage AS arbeitstage,
                Eintritts_Datum AS joined_on,

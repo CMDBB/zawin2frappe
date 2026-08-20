@@ -40,6 +40,10 @@
 
   "admin_service": "900",
 
+  "role_color_rules": {
+    "_comment": "BEHANDLER.FarbeTermin (default appointment colour, an OLE_COLOR int: R + G*256 + B*65536) -> a Scheduling Role someone holds in addition to their designation-derived one. Optional 'max_rooms' overrides the role's default of 1. Practice-specific judgement calls like this belong in a private companion profile (see cmdb_frappe), not here."
+  },
+
   "categories": {
     "_comment": "Names as they appear in TAGPLANTERMINKATEGORIE.Bezeichnung_1. List with: zawin categories",
     "absence": ["Holiday", "Absent"],
@@ -86,7 +90,8 @@
 
   "zawin": {
     "funktion_prophylaxis": null,
-    "_comment": "BEHANDLER.Funktion code meaning prophylaxis, if this install uses one; null disables the check. Funktion is more reliable than matching initials suffixes. Inspect with: zawin values BEHANDLER Funktion"
+    "prophylaxis_discipline": null,
+    "_comment": "BEHANDLER.Funktion code meaning prophylaxis, if this install uses one; null disables the check. Funktion is more reliable than matching initials suffixes. Inspect with: zawin values BEHANDLER Funktion. prophylaxis_discipline is the Department the resulting 'Prophylaxis' Scheduling Role belongs to; required only if funktion_prophylaxis is set."
   },
 
   "overrides": {

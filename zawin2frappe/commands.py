@@ -11,6 +11,7 @@ command works across sites without arguments:
 """
 
 from __future__ import annotations
+import logging
 
 import json
 
@@ -41,6 +42,7 @@ from frappe.commands import get_site, pass_context
 @pass_context
 def zawin_build(context, target, out, date_from, date_to, signal_from, signal_to, full_day_policy, dry_run):
 	"""Extract ZaWin agenda data and load it into Frappe HR."""
+	logging.basicConfig(level=logging.DEBUG)
 	site = get_site(context)
 	frappe.init(site=site)
 	frappe.connect()
@@ -62,7 +64,17 @@ def zawin_build(context, target, out, date_from, date_to, signal_from, signal_to
 			sink = CsvSink(out)
 		else:
 			from zawin2frappe.loaders import FrappeDocSink
+			from zawin2frappe.loaders.bootstrap import ensure_prerequisites
 
+			# Writing straight into Frappe depends on Employee being keyed by
+			# employee number, not the HRMS naming series — Scheduling Role
+			# and Employee Scheduling Role link to it by that number directly
+			# (see pipeline.roles). A site that never ran `zawin-bootstrap`
+			# still has HR Settings on its setup-wizard default of "Naming
+			# Series", which silently breaks that link. Run unconditionally
+			# rather than trust the operator remembered the separate command
+			# — it is idempotent (checks before writing).
+			ensure_prerequisites(verbose=False)
 			sink = FrappeDocSink()
 
 		result = build.run(

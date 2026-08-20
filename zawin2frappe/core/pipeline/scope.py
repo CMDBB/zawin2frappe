@@ -6,10 +6,18 @@ Two groups are kept in Frappe for completeness but never scheduled:
               and is not something the optimizer should try to reproduce.
   Administration  not tied to shifts at all.
 
-Neither needs a flag on Employee: autoshift only schedules departments that
-have a Discipline-Designation-Branch Config row, so putting these people in
-their own department removes them from scope and nothing else changes. Adding a
-config row later brings them back in.
+Neither needs a flag on Employee: autoshift only schedules people who hold a
+Scheduling Role (see `pipeline.roles`), so putting these people in their own
+department, with no role, removes them from scope and nothing else changes.
+Giving them a role later brings them back in.
+
+Prophylaxis used to be a third such parked department: the two people who do
+it work a second, assistant-side column as well, and committing them to one
+discipline would over-state that discipline's capacity. That is now
+`pipeline.roles`'s problem, not this module's — they keep their real
+discipline here and pick up a second `Prophylaxis` Scheduling Role there,
+with capacity handled by autoshift's per-role FTE ceiling rather than by
+being left out of the schedule.
 """
 
 from __future__ import annotations
@@ -25,15 +33,9 @@ log = logging.getLogger(__name__)
 
 DEPT_RECEPTION = "Reception"
 DEPT_ADMIN = "Administration"
-DEPT_PROPHYLAXIS = "Prophylaxis"
 
 #: Departments the optimizer does not schedule.
-#:
-#: Prophylaxis is here because the two people who do it work a second,
-#: assistant-side column as well, and committing them to one discipline would
-#: over-state that discipline's capacity. Recorded now, scheduled once the
-#: dual-role case is modelled properly.
-UNSCHEDULED_DEPARTMENTS = frozenset({DEPT_RECEPTION, DEPT_ADMIN, DEPT_PROPHYLAXIS})
+UNSCHEDULED_DEPARTMENTS = frozenset({DEPT_RECEPTION, DEPT_ADMIN})
 
 #: Share of worked rows labelled reception/admin above which someone is treated
 #: as reception. The observed distribution is bimodal with nothing in between:
@@ -140,20 +142,9 @@ def apply(spine: pd.DataFrame, annotated: pd.DataFrame, columns: pd.DataFrame) -
 			list(df.loc[overruled, "personnel_no"]),
 		)
 
-	# Prophylaxis, from ZaWin rather than accounting. Payroll tends to be
-	# inconsistent for this role, because prophylaxis counts contractually as
-	# assistant work: two people doing the same job can sit under different
-	# service codes while their ZaWin data is near-identical — a prophylaxis
-	# column carrying patient bookings plus a presence column carrying none.
-	from ..roster import funktion_prophylaxis
-
-	fp = funktion_prophylaxis()
-	prophy = (
-		set() if fp is None else set(columns.loc[columns["funktion_code"].eq(fp), "personnel_no"].dropna())
-	)
-	if prophy:
-		hit = df["personnel_no"].isin(prophy)
-		df.loc[hit, ["department", "scope_source"]] = [DEPT_PROPHYLAXIS, "funktion"]
+	# Prophylaxis is no longer a department reroute — it is a second
+	# Scheduling Role, added in pipeline.roles from this same funktion signal.
+	# A prophylaxis worker's `department` here stays their real discipline.
 
 	overrides = load_overrides()
 	if not overrides.empty:

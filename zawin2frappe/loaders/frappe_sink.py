@@ -43,6 +43,17 @@ KEY_FIELD = {
 	"Shift Location": "location_name",
 	"Employee": "employee_number",
 	"Shift Assignment": "custom_zawin_key",
+	"Scheduling Role": "role_name",
+	# Deterministic autoname (format:{employee}-{scheduling_role}), precomputed
+	# by pipeline.roles to match exactly, so it can double as the upsert key.
+	"Employee Scheduling Role": "name",
+}
+
+#: Doctype -> the field that names a Department, needing the same "ERPNext
+#: appends the company abbreviation" resolution as Employee.department.
+DEPARTMENT_FIELD = {
+	"Employee": "department",
+	"Scheduling Role": "discipline",
 }
 
 #: Doctypes to submit after insert.
@@ -210,16 +221,18 @@ class FrappeDocSink:
 			raise ValueError(f"no key field configured for {doctype}")
 
 		payloads = [{c: _clean(v) for c, v in row.items()} for _, row in rows.iterrows()]
-		if doctype == "Employee":
+		dept_field = DEPARTMENT_FIELD.get(doctype)
+		if dept_field is not None:
 			self._load_departments()
 			for payload in payloads:
-				if "department" in payload:
-					payload["department"] = self._resolve_department(payload["department"])
+				if dept_field in payload:
+					payload[dept_field] = self._resolve_department(payload[dept_field])
 		keys = [p.get(key_field) for p in payloads]
 		missing_key = sum(1 for k in keys if k is None)
 		if missing_key:
 			raise ValueError(f"{missing_key} {doctype} rows have no {key_field}")
 
+		log.debug(f'trying {doctype} write with {key_field=}')
 		existing = self._existing(doctype, key_field, keys, list(payloads[0]))
 
 		with bulk_load_flags():

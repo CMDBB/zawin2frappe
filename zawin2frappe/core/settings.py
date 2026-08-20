@@ -69,6 +69,9 @@ class Profile:
 	non_discipline_agendas: set[int]
 	#: BEHORT id -> branch name
 	site_behort: dict[int, str]
+	#: FarbeTermin (OLE_COLOR int) -> {"role": ..., "discipline": ..., "max_rooms": ...}
+	#: a person holds that Scheduling Role in addition to their designation-derived one.
+	role_color_rules: dict[int, dict[str, Any]]
 	thresholds: dict[str, float]
 	zawin: dict[str, Any] = field(default_factory=dict)
 	#: name -> path, relative to source_path's directory unless absolute
@@ -159,6 +162,7 @@ def load(path: str | Path | None = None) -> Profile:
 		label_rules=[tuple(r) for r in raw.get("label_rules", [])],
 		non_discipline_agendas=set(raw.get("agendas", {}).get("non_discipline", [])),
 		site_behort={int(k): v for k, v in raw.get("site_behort", {}).items()},
+		role_color_rules={int(k): v for k, v in raw.get("role_color_rules", {}).items()},
 		thresholds=raw.get("thresholds", {}),
 		zawin=raw.get("zawin", {}),
 		overrides={k: v for k, v in (raw.get("overrides") or {}).items() if v},

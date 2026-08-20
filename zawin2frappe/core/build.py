@@ -21,6 +21,7 @@ from .pipeline import (
 	employees,
 	presence,
 	quality,
+	roles,
 	scope,
 )
 
@@ -113,6 +114,9 @@ def run(
 
 	if target in ("employees", "all"):
 		result.records.update(employees.build_all(spine, columns, as_of=date_to))
+		# After Employee: both link to it, so it must already be in the write order.
+		result.records["Scheduling Role"] = roles.build_scheduling_roles(spine)
+		result.records["Employee Scheduling Role"] = roles.build_employee_scheduling_roles(spine, columns)
 
 	if target in ("assignments", "all"):
 		shift_rows = assignments.build(person_level, spine)
