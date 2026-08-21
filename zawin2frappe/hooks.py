@@ -22,6 +22,11 @@ app_license = "gpl-3.0"
 # Custom Fields, and the discipline split exists because its optimizer needs it. Without
 # autoshift installed those fields don't exist and the values are silently dropped.
 #
+# This app owns two Custom Fields of its own, both under module `Zawin2Frappe`:
+# `Shift Assignment.custom_zawin_key` (the import's idempotency key) and
+# `Employee.custom_initials` (BEHANDLER.Initialen — the practice's short code for a
+# person, which is what appears on their paper planning rather than a full name).
+#
 # The dependency only runs this way. autoshift is a general-purpose optimizer and must never
 # require zawin2frappe — that would tie it to one legacy source system. Planned autoshift
 # work (multi-skill workforce, capability matrix) will be fed from here on the same terms.

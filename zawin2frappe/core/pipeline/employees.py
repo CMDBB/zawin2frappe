@@ -183,6 +183,11 @@ def build_employees(
 			"designation": df["service_no"].map(lambda c: settings.get().service(c).designation),
 			# autoshift already defines this custom field on Employee.
 			"custom_fte": df["fte_pct"],
+			# The practice's own short code for a person, and the only name that
+			# appears on their paper planning. Blank for anyone the crosswalk
+			# could not tie to an agenda column — recent hires, mostly, who have
+			# no ZaWin column yet but do appear on the printed roster.
+			"custom_initials": df["behandler_initials"].str.strip(),
 		}
 	)
 

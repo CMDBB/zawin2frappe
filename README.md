@@ -19,6 +19,11 @@ autoshift owns the scheduling fields this import writes (`Employee.custom_fte`,
 without it those values have nowhere to land. The reverse is not true — autoshift is a
 general-purpose optimiser and knows nothing about ZaWin.
 
+This app adds two Custom Fields of its own: `Shift Assignment.custom_zawin_key`, the
+import's idempotency key, and `Employee.custom_initials`, carrying `BEHANDLER.Initialen`
+— the short code a practice actually calls someone by on a paper roster. Anyone with no
+agenda column has none, so the field stays editable.
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
