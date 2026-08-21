@@ -20,6 +20,7 @@ guesses at.
 
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 import os
@@ -76,6 +77,25 @@ class Profile:
 	zawin: dict[str, Any] = field(default_factory=dict)
 	#: name -> path, relative to source_path's directory unless absolute
 	overrides: dict[str, str] = field(default_factory=dict)
+	#: name -> dotted path of a zero-argument factory returning a resolver object.
+	#: Where `overrides` supply practice-specific *data*, these supply practice-specific
+	#: *rules* — logic this package must not carry. See `pipeline.location`.
+	resolvers: dict[str, str] = field(default_factory=dict)
+
+	def resolver(self, name: str):
+		"""Instantiate the named resolver, or None if the profile declares none.
+
+		The factory is imported by dotted path, so a site-specific app can ship
+		the rules without this package importing it. Absent is normal, not an
+		error: a practice with nothing to resolve simply gets the default.
+		"""
+		path = self.resolvers.get(name)
+		if not path:
+			return None
+		module_path, _, attr = path.rpartition(".")
+		if not module_path:
+			raise ValueError(f"resolver {name!r} must be a dotted path, got {path!r}")
+		return getattr(importlib.import_module(module_path), attr)()
 
 	def override_path(self, name: str) -> Path | None:
 		"""Path to a curated override file, or None if the profile has none.
@@ -166,6 +186,7 @@ def load(path: str | Path | None = None) -> Profile:
 		thresholds=raw.get("thresholds", {}),
 		zawin=raw.get("zawin", {}),
 		overrides={k: v for k, v in (raw.get("overrides") or {}).items() if v},
+		resolvers={k: v for k, v in (raw.get("resolvers") or {}).items() if v},
 	)
 
 

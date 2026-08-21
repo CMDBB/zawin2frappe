@@ -100,15 +100,13 @@ def ensure_prerequisites(*, verbose: bool = True) -> dict:
 	for branch in prof.branches:
 		if not frappe.db.exists("Branch", branch):
 			frappe.get_doc({"doctype": "Branch", "branch": branch}).insert(ignore_permissions=True)
-		if not frappe.db.exists("Shift Location", branch):
-			frappe.get_doc(
-				{
-					"doctype": "Shift Location",
-					"location_name": branch,
-					"custom_branch": branch,
-				}
-			).insert(ignore_permissions=True)
 	done["branches"] = f"{len(prof.branches)} present"
+
+	# Shift Locations are deliberately NOT created here. autoshift reads a shift's
+	# branch *and* discipline back off the location link, so a location is a
+	# (branch, discipline) pair — which needs the resolved disciplines the build
+	# produces. A branch-only location would validate fine and then throw inside
+	# the optimizer for having no discipline. `pipeline.employees` emits them.
 
 	frappe.db.commit()
 	if verbose:

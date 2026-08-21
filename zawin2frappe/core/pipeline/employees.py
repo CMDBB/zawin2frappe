@@ -70,15 +70,36 @@ def build_shift_types() -> pd.DataFrame:
 	return pd.DataFrame(settings.get().shift_types)
 
 
-def build_shift_locations() -> pd.DataFrame:
-	"""Site-level only.
+def build_shift_locations(spine: pd.DataFrame) -> pd.DataFrame:
+	"""One Shift Location per (branch, discipline).
 
-	Room-level occupancy is not recoverable from the agenda: only 808 of ~954k
-	rows name an actual chair, the rest carry the site or the default. So
-	autoshift's `rooms_num` must be configured by hand.
+	Not one per site, even though a site is what the agenda records: autoshift
+	reads a shift's branch *and* its discipline back off this single link
+	(`optimizer/data_loader.py`), so the pair has to be encoded in the name.
+
+	Room-level occupancy stays out of it. Only 808 of ~954k agenda rows name an
+	actual chair, the rest carry the site or the default, so autoshift's
+	`rooms_num` is configured by hand per Discipline Branch Config.
+
+	Every department present is emitted, including the ones the optimizer never
+	schedules: their staff still have Shift Assignments, and a link with no
+	target would fail validation.
 	"""
+	from .location import location_name
+
+	col = "department" if "department" in spine else "discipline_resolved"
+	disciplines = sorted(spine[col].dropna().unique())
+	rows = [
+		{
+			"location_name": location_name(branch, discipline),
+			"custom_branch": branch,
+			"custom_discipline": department_link(discipline),
+		}
+		for branch in settings.get().branches
+		for discipline in disciplines
+	]
 	# Shift Location autonames from `location_name` (autoname: field:location_name).
-	return pd.DataFrame({"location_name": settings.get().branches})
+	return pd.DataFrame(rows, columns=["location_name", "custom_branch", "custom_discipline"])
 
 
 def build_employees(
@@ -217,6 +238,6 @@ def build_all(
 		"Designation": build_designations(spine),
 		"Branch": build_branches(),
 		"Shift Type": build_shift_types(),
-		"Shift Location": build_shift_locations(),
+		"Shift Location": build_shift_locations(spine),
 		"Employee": build_employees(spine, columns, as_of),
 	}

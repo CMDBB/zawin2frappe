@@ -94,6 +94,16 @@
     "_comment": "BEHANDLER.Funktion code meaning prophylaxis, if this install uses one; null disables the check. Funktion is more reliable than matching initials suffixes. Inspect with: zawin values BEHANDLER Funktion. prophylaxis_discipline is the Department the resulting 'Prophylaxis' Scheduling Role belongs to; required only if funktion_prophylaxis is set."
   },
 
+  "resolvers": {
+    "_comment": [
+      "Optional dotted paths to practice-specific *rules* — logic that cannot be expressed as data.",
+      "Each names a zero-argument factory returning an object implementing the matching protocol.",
+      "'branch' decides which site a shift was worked at (see pipeline/location.py BranchResolver);",
+      "omit it and every shift lands on the first entry in 'branches'."
+    ],
+    "branch": null
+  },
+
   "overrides": {
     "_comment": "Optional paths, relative to this file, to human-confirmed corrections the matcher cannot infer — renames, and people whose real job differs from their payroll filing. These name identifiable individuals: keep them out of any public repository.",
     "identity_links": null,

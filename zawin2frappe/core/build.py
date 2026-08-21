@@ -19,6 +19,7 @@ from .pipeline import (
 	calendar,
 	discipline,
 	employees,
+	location,
 	presence,
 	quality,
 	roles,
@@ -95,6 +96,10 @@ def run(
 		patient = extract.patient_activity(date_from, date_to)
 		raw, styles = presence.build(agenda, patient, practice)
 		person_level = presence.to_person_level(raw, columns)
+		# Before the daily collapse: it keeps one half-day per person per day, so
+		# the branch has to be agreed across the day first or the survivor decides
+		# the site by accident.
+		person_level = location.apply(person_level, columns, _query)
 		if full_day_policy == "single":
 			person_level = presence.collapse_daily(person_level, patient, columns)
 

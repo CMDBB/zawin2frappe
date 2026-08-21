@@ -22,7 +22,7 @@ import logging
 import pandas as pd
 
 from .. import settings, shifts
-from . import calendar
+from . import calendar, location
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +56,9 @@ def attested(annotated: pd.DataFrame) -> pd.DataFrame:
 	absence-marked one — an explicit row always beats a derived one.
 	"""
 	rows = annotated[annotated["shift_kind"].isin(ASSIGNABLE_KINDS) & ~annotated["is_absence"]]
+	# The site a row was worked at is a property of that row, so it is read here
+	# while the source row is still in hand; see pipeline.location.
+	branches = location.row_branches(rows)
 	out = []
 	for r in rows.itertuples():
 		for window in _windows_of(r.shift_window):
@@ -69,6 +72,7 @@ def attested(annotated: pd.DataFrame) -> pd.DataFrame:
 					"shift_kind": r.shift_kind,
 					"von_zeit": r.VonZeit,
 					"bis_zeit": r.BisZeit,
+					"branch": branches.get(r.Index, pd.NA),
 				}
 			)
 	return pd.DataFrame(out)
@@ -135,7 +139,7 @@ def reconstruct(
 	"""
 	absence_marked = set(styles.loc[styles["style"] == shifts.STYLE_ABSENCE, "FK_Behandler"])
 	if not absence_marked:
-		return pd.DataFrame(columns=["behandler_id", "date", "window", "derivation", "shift_kind"])
+		return pd.DataFrame(columns=["behandler_id", "date", "window", "derivation", "shift_kind", "branch"])
 
 	away = absence_windows(annotated)
 	hard, soft = corroboration(annotated, patient)
@@ -159,6 +163,9 @@ def reconstruct(
 				"shift_kind": "reconstructed",
 				"von_zeit": None,
 				"bis_zeit": None,
+				# No source row to carry a site tag; pipeline.location fills this
+				# in from the column the shift was worked in.
+				"branch": pd.NA,
 			}
 		)
 	df = pd.DataFrame(out)
@@ -188,6 +195,10 @@ def build(
 	combined = pd.concat([att, rec], ignore_index=True) if not rec.empty else att
 	if combined.empty:
 		return combined, styles
+
+	# A site signal on any of the tied rows settles the half-day before the
+	# dedup below picks a survivor on grounds that have nothing to do with site.
+	combined = location.promote(combined, ["behandler_id", "date", "window"])
 
 	# Stable sort with an explicit tiebreaker: quicksort is not stable, so
 	# without this the winner among tied rows varies between runs and the
@@ -236,6 +247,10 @@ def to_person_level(assignments: pd.DataFrame, columns: pd.DataFrame) -> pd.Data
 			orphans,
 		)
 	out = out.dropna(subset=["personnel_no"])
+
+	# Same-day site evidence survives the collapse across a person's columns: an
+	# ortho parallel column or a branch column can be the only one that names it.
+	out = location.promote(out, ["personnel_no", "date", "window"])
 
 	# Attested beats reconstructed when the same half-day arrives from several
 	# columns, and a real source row is worth keeping over a derivation.

@@ -54,6 +54,7 @@ KEY_FIELD = {
 DEPARTMENT_FIELD = {
 	"Employee": "department",
 	"Scheduling Role": "discipline",
+	"Shift Location": "custom_discipline",
 }
 
 #: Doctypes to submit after insert.

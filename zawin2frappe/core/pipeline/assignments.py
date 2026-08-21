@@ -12,7 +12,7 @@ import logging
 import pandas as pd
 
 from .. import settings
-from . import keys, presence
+from . import keys, location, presence
 
 log = logging.getLogger(__name__)
 
@@ -79,11 +79,19 @@ def fte_reconciliation(
 
 
 def build(person_level: pd.DataFrame, spine: pd.DataFrame) -> pd.DataFrame:
-	"""Shape person-level half-days into Frappe Shift Assignment rows."""
+	"""Shape person-level half-days into Frappe Shift Assignment rows.
+
+	`shift_location` names a (branch, discipline) pair, because that is what
+	autoshift reads back off it. The branch is settled per half-day by
+	`pipeline.location`; the discipline is the person's own, from the spine.
+	"""
 	if person_level.empty:
 		return pd.DataFrame()
 
 	df = person_level.copy()
+	discipline = df["personnel_no"].map(spine.set_index("personnel_no")["department"])
+	branch = df["branch"] if "branch" in df else pd.Series(location.default_branch(), index=df.index)
+	shift_location = [location.location_name(b, d) for b, d in zip(branch, discipline, strict=False)]
 	df["zawin_key"] = [
 		keys.attested_key(z, w) if pd.notna(z) else keys.reconstructed_key(int(b), d, w)
 		for z, b, d, w in zip(
@@ -98,11 +106,20 @@ def build(person_level: pd.DataFrame, spine: pd.DataFrame) -> pd.DataFrame:
 			"shift_type": df["window"].str.upper(),
 			"start_date": df["date"],
 			"end_date": df["date"],
+			"shift_location": shift_location,
 			"status": "Active",
 			"docstatus": 1,
 		}
 	)
 	out["company"] = settings.get().company
+
+	unplaced = out["shift_location"].isna()
+	if unplaced.any():
+		log.warning(
+			"%d assignments have no Shift Location (person has no department): %s",
+			int(unplaced.sum()),
+			", ".join(sorted(set(out.loc[unplaced, "employee"].astype(str)))[:10]),
+		)
 
 	dupes = out["custom_zawin_key"].duplicated().sum()
 	if dupes:
