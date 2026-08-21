@@ -92,3 +92,52 @@ zawin values BEHANDLER Funktion    # value frequencies — how enums get decoded
 zawin fkscan TAGPLANTERMIN         # infer foreign keys (ZaWin declares none)
 zawin build all --out data/import  # Frappe Data Import CSVs
 ```
+
+## Refreshing the database
+
+Every extract is only as current as whichever nightly backup is loaded, so this
+is routine rather than setup. `zawin restore` does the whole thing: pick a
+backup off the share, unpack it, replace the local database, report how far the
+new agenda reaches, and optionally re-run the build.
+
+```bash
+zawin restore --list                      # what is on the share, newest first
+zawin restore                             # choose one, confirm, restore
+zawin restore --latest --yes --then-build # unattended refresh
+```
+
+```
+20 backups in /mnt/z, newest first:
+    1  ZaWin_xxxxxxxx202608122153.zip  2026-08-12 21:53  1.3 GiB
+    2  ZaWin_xxxxxxxx202608112153.zip  2026-08-11 21:53  1.3 GiB
+...
+agenda: 958,185 rows, 2018-01-01 to 2028-12-31 (69,800 of them still ahead)
+```
+
+**This one command runs on the host, not in bench**, which is the only place it
+can: the backups sit on a Windows drive mapped into WSL, the `.bak` has to land
+somewhere the SQL Server *container* can read, and the Frappe container can
+reach neither. So the rebuild afterwards is a command it shells out to
+(`ZAWIN_BUILD_COMMAND`) rather than a function it calls.
+
+Everything else is worked out rather than configured. The SQL Server container
+is identified from `MSSQL_HOST`, or failing that from whichever container
+publishes `MSSQL_PORT`; the staging directory is read off that container's bind
+mount; and because the configured address is the one the *Frappe* container
+uses, the restore falls back to the same container's published port when that
+address does not resolve here. `.env.example` lists the overrides for when a
+guess is wrong.
+
+Two things worth knowing:
+
+- The share is not in `/etc/fstab`, so after a WSL restart it is simply absent.
+  The command says so, with the `mount` line to fix it, rather than reporting
+  no backups.
+- Unpacking turns 1.3 GiB into 7.8 GiB. The `.bak` is deleted once the restore
+  lands unless you pass `--keep-bak`, and disk space is checked before
+  unpacking rather than halfway through it.
+
+The restore replaces the local copy outright and closes any open connection to
+it first (`SINGLE_USER WITH ROLLBACK IMMEDIATE`). That is safe here and only
+here: this database is a read-only copy of the practice's and nothing writes to
+it. It is never the practice's live server.

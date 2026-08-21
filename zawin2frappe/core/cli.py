@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import pathlib
 import sys
 
 import pandas as pd
@@ -151,6 +152,69 @@ def cmd_build(args) -> None:
 		print(f"   {result.fte_outside_tolerance} people outside the FTE band (report only)")
 
 
+def cmd_restore(args) -> None:
+	"""Refresh the local SQL Server from a nightly backup on the share."""
+	from . import restore as R
+
+	backups = R.available()
+	if not backups:
+		print(f"no backups in {R.backup_dir()}")
+		return
+
+	live = R.current()
+	if live:
+		print(f"live now : {live['physical_device_name']}")
+		print(f"           backup taken {live['backup_finish_date']}, restored {live['restore_date']}")
+
+	if args.backup:
+		chosen = R.Backup(
+			path=pathlib.Path(args.backup),
+			size=pathlib.Path(args.backup).stat().st_size,
+			taken_at=R._taken_at(pathlib.Path(args.backup)),
+		)
+	elif args.latest:
+		chosen = backups[0]
+	else:
+		print(f"\n{len(backups)} backups in {R.backup_dir()}, newest first:")
+		for index, backup in enumerate(backups[: args.limit], start=1):
+			print(f"  {index:>3}  {backup.label}")
+		if args.list:
+			return
+		answer = input(f"\nrestore which? [1-{min(len(backups), args.limit)}, blank = 1] ").strip()
+		chosen = backups[(int(answer) - 1) if answer else 0]
+
+	if args.list:
+		return
+
+	print(f"\nchosen: {chosen.label}")
+	if not args.yes:
+		if input("this replaces the local ZaWin database. continue? [y/N] ").strip().lower() != "y":
+			print("aborted")
+			return
+
+	host_dir, server_dir = R.staging_dirs()
+	bak = R.unpack(chosen, host_dir, reuse=not args.no_reuse)
+	R.restore(f"{server_dir.rstrip('/')}/{bak.name}")
+
+	state = R.horizon()
+	print(
+		f"\nagenda: {state['rows_total']:,} rows, {state['first_date']:%Y-%m-%d} "
+		f"to {state['last_date']:%Y-%m-%d} ({state['rows_ahead']:,} of them still ahead)"
+	)
+
+	if not args.keep_bak and bak.parent == host_dir:
+		try:
+			bak.unlink()
+			print(f"removed {bak.name}")
+		except OSError as exc:
+			print(f"! could not remove {bak.name}: {exc}")
+
+	if args.then_build:
+		code = R.rebuild()
+		if code:
+			print(f"! build exited {code}")
+
+
 def build_parser() -> argparse.ArgumentParser:
 	p = argparse.ArgumentParser(prog="zawin", description=__doc__)
 	p.add_argument("-v", "--verbose", action="store_true")
@@ -229,6 +293,19 @@ def build_parser() -> argparse.ArgumentParser:
 	)
 	bl.add_argument("--signal-to", default=None)
 	bl.set_defaults(func=cmd_build)
+
+	r = sub.add_parser("restore", help="refresh the local SQL Server from a nightly backup")
+	r.add_argument("--list", action="store_true", help="show what is on the share and stop")
+	r.add_argument("--backup", default=None, help="restore this file instead of choosing one")
+	r.add_argument("--latest", action="store_true", help="take the newest without asking")
+	r.add_argument("--limit", type=int, default=15, help="how many backups to list")
+	r.add_argument("--yes", action="store_true", help="do not confirm before replacing the database")
+	r.add_argument("--keep-bak", action="store_true", help="keep the unpacked .bak (it is large)")
+	r.add_argument("--no-reuse", action="store_true", help="unpack again even if the .bak is there")
+	r.add_argument(
+		"--then-build", action="store_true", help="run $ZAWIN_BUILD_COMMAND once the restore lands"
+	)
+	r.set_defaults(func=cmd_restore)
 
 	return p
 
