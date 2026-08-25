@@ -58,8 +58,19 @@ def rules() -> list[tuple]:
 	return _RULE_CACHE[key]
 
 
-#: Discipline hints that appear inside PRES labels.
-_DISCIPLINE = re.compile(r"\b(ortho|hd|poly|rec|admin|dp|sv)\b", re.IGNORECASE)
+#: Compiled `discipline_labels`, cached per profile object alongside `rules()`.
+_DISCIPLINE_CACHE: dict[int, list[tuple[re.Pattern, str]]] = {}
+
+
+def discipline_rules() -> list[tuple[re.Pattern, str]]:
+	"""The active profile's discipline vocabulary, first match wins."""
+	prof = settings.get()
+	key = id(prof)
+	if key not in _DISCIPLINE_CACHE:
+		_DISCIPLINE_CACHE[key] = [
+			(re.compile(pat, re.IGNORECASE), name) for pat, name in prof.discipline_labels
+		]
+	return _DISCIPLINE_CACHE[key]
 
 
 def clean_label(raw: str | None) -> str:
@@ -88,10 +99,20 @@ def classify(raw: str | None) -> tuple[str, bool]:
 
 
 def discipline_hint(raw: str | None) -> str | None:
-	"""Extract the discipline token from labels like 'PRES ORTHO CFO'."""
+	"""The discipline a label names — 'PRES ORTHO CFO' -> "Orthodontics".
+
+	Which words name which discipline is profile data, not knowledge held here:
+	each practice types its own abbreviations, in its own language, and none of
+	that vocabulary carries to the next install. A label naming no discipline
+	returns None; `pipeline.discipline` decides what to make of that.
+	"""
 	label = clean_label(raw)
-	m = _DISCIPLINE.search(label)
-	return m.group(1).lower() if m else None
+	if not label:
+		return None
+	for pattern, name in discipline_rules():
+		if pattern.search(label):
+			return name
+	return None
 
 
 #: Shift windows in minutes since midnight. VonZeit/BisZeit are minutes from

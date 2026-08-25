@@ -100,15 +100,9 @@ def apply(spine: pd.DataFrame, annotated: pd.DataFrame, columns: pd.DataFrame) -
 	df["department"] = df["discipline_resolved"]
 	df["scope_source"] = "discipline"
 
-	# Payroll-only leavers never went through the accounting service map, so
-	# their discipline is null even when payroll records a service number.
-	# Their service code is recoverable from payroll, and without this every
-	# leaver imports with no department at all.
-	missing = df["department"].isna() & df["service_no"].notna()
-	if missing.any():
-		filled = df.loc[missing, "service_no"].map(lambda c: prof.service(c).discipline)
-		df.loc[missing, "department"] = filled
-		df.loc[missing & df["department"].notna(), "scope_source"] = "payroll_service"
+	# Payroll-only leavers used to be filled in here, from the service number
+	# payroll records. `pipeline.discipline.accounting_discipline` now does it
+	# one step earlier, where it also stops the agenda signal overwriting them.
 
 	is_admin_service = df["service_no"].eq(prof.admin_service)
 	df.loc[is_admin_service, ["department", "scope_source"]] = [DEPT_ADMIN, "service"]

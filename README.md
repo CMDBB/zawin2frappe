@@ -70,6 +70,41 @@ environment for standalone use.
 `profiles/example.json` documents every field and points at the exploration
 command that discovers the right value for your database.
 
+### Disciplines
+
+autoshift sizes room coverage per **discipline**, so which one a person belongs
+to decides how much capacity the optimiser thinks the practice has. Payroll
+rarely says: it files whole pools — every assistant under one service code,
+every apprentice under another — because it has no use for the distinction.
+
+Where the service map answers, it wins. Where it does not, the discipline is
+read off the free-text agenda label, one presence row at a time:
+
+| evidence | example | comes from |
+|---|---|---|
+| the label names a discipline | `PRES ORTHO` | `discipline_labels` in the profile |
+| the label names a practitioner | `PRES CFO` | `BEHANDLER.Initialen` — no configuration |
+| the label names nothing | `PRES` | `default_discipline` in the profile |
+
+A person works in whichever discipline holds most of their rows. The second
+row is the one worth knowing about: it needs no setup at all, because whoever
+the initials belong to has already been placed by accounting, so their
+discipline transfers to the person assisting them. A practice that configures
+nothing still gets a usable split, and the build logs the commonest label words
+nothing claimed — anything there that names a discipline is one
+`discipline_labels` entry away from being counted properly.
+
+Two things sit outside the label. A `role_color_rules` entry marked `primary`
+places the people it marks directly, for work that leaves no trace in what
+staff type (sterilization columns read a bare `PRES` like every other), and a
+`staff_scope` override beats everything.
+
+Departments are emitted for every discipline the profile names, filled or not,
+so a Scheduling Role or a Discipline Branch Config always has something to link
+to. Keeping a pool out of a clinical discipline is therefore just a matter of
+giving it one of its own — set the service's `discipline` and apprentices stop
+counting as omnipractice capacity.
+
 ### Curated overrides
 
 Some links cannot be inferred — a member of staff recorded under a former
@@ -106,14 +141,6 @@ zawin restore                             # choose one, confirm, restore
 zawin restore --latest --yes --then-build # unattended refresh
 ```
 
-```
-20 backups in /mnt/z, newest first:
-    1  ZaWin_xxxxxxxx202608122153.zip  2026-08-12 21:53  1.3 GiB
-    2  ZaWin_xxxxxxxx202608112153.zip  2026-08-11 21:53  1.3 GiB
-...
-agenda: 958,185 rows, 2018-01-01 to 2028-12-31 (69,800 of them still ahead)
-```
-
 **This one command runs on the host, not in bench**, which is the only place it
 can: the backups sit on a Windows drive mapped into WSL, the `.bak` has to land
 somewhere the SQL Server *container* can read, and the Frappe container can
@@ -135,7 +162,7 @@ Two things worth knowing:
   no backups.
 - Unpacking turns 1.3 GiB into 7.8 GiB. The `.bak` is deleted once the restore
   lands unless you pass `--keep-bak`, and disk space is checked before
-  unpacking rather than halfway through it.
+  unpacking.
 
 The restore replaces the local copy outright and closes any open connection to
 it first (`SINGLE_USER WITH ROLLBACK IMMEDIATE`). That is safe here and only

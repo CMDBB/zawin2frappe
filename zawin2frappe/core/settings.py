@@ -66,12 +66,25 @@ class Profile:
 	non_clinical_categories: tuple[str, ...]
 	#: (regex, kind, counts_as_worked), first match wins
 	label_rules: list[tuple[str, str, bool]]
+	#: (regex, discipline), first match wins. Applied to a presence label, this
+	#: is how the practice's own vocabulary — "PRES ORTHO", "PRES HD" — names a
+	#: discipline. See `pipeline.discipline`.
+	discipline_labels: list[tuple[str, str]]
+	#: Discipline for presence rows that name none. A bare "PRES" means the main
+	#: floor at most practices; null leaves those rows out of the count instead.
+	default_discipline: str | None
+	#: Disciplines that must exist whether or not anyone is currently filed
+	#: under them. Only needed for ones no service, label rule or colour rule
+	#: mentions — `all_disciplines` already covers those.
+	declared_disciplines: list[str]
 	#: TAGPLAN ids that are rooms/purposes rather than disciplines
 	non_discipline_agendas: set[int]
 	#: BEHORT id -> branch name
 	site_behort: dict[int, str]
-	#: FarbeTermin (OLE_COLOR int) -> {"role": ..., "discipline": ..., "max_rooms": ...}
-	#: a person holds that Scheduling Role in addition to their designation-derived one.
+	#: FarbeTermin (OLE_COLOR int) -> {"discipline": ..., "role": ..., "max_rooms": ...,
+	#: "primary": bool}. `role` grants that Scheduling Role on top of the
+	#: designation-derived one; `primary` makes the colour place the person in
+	#: the discipline outright (`pipeline.discipline`). Either, or both.
 	role_color_rules: dict[int, dict[str, Any]]
 	thresholds: dict[str, float]
 	zawin: dict[str, Any] = field(default_factory=dict)
@@ -119,6 +132,32 @@ class Profile:
 	@property
 	def clinical_services(self) -> set[str]:
 		return {code for code, s in self.services.items() if s.clinical}
+
+	@property
+	def all_disciplines(self) -> tuple[str, ...]:
+		"""Every discipline this profile can place someone in.
+
+		The union of what accounting can say, what the agenda vocabulary can
+		name, what a colour rule can grant, and anything declared outright.
+		A Department is emitted for each (`pipeline.employees`), because a
+		Scheduling Role may name a discipline nobody happens to be filed under
+		this month and a link with no target fails validation.
+
+		Order is stable — declaration order, then first appearance — so ties in
+		`pipeline.discipline` break the same way on every run.
+		"""
+		seen: dict[str, None] = dict.fromkeys(self.declared_disciplines)
+		groups = (
+			[s.discipline for s in self.services.values()],
+			[name for _, name in self.discipline_labels],
+			[r.get("discipline") for r in self.role_color_rules.values()],
+			[self.default_discipline, self.zawin.get("prophylaxis_discipline")],
+		)
+		for group in groups:
+			for name in group:
+				if name:
+					seen.setdefault(name, None)
+		return tuple(seen)
 
 
 def _resolve(path: str | Path | None) -> Path:
@@ -180,6 +219,9 @@ def load(path: str | Path | None = None) -> Profile:
 		absence_categories=tuple(raw.get("categories", {}).get("absence", [])),
 		non_clinical_categories=tuple(raw.get("categories", {}).get("non_clinical", [])),
 		label_rules=[tuple(r) for r in raw.get("label_rules", [])],
+		discipline_labels=[tuple(r) for r in raw.get("discipline_labels", [])],
+		default_discipline=raw.get("default_discipline"),
+		declared_disciplines=list(raw.get("disciplines", [])),
 		non_discipline_agendas=set(raw.get("agendas", {}).get("non_discipline", [])),
 		site_behort={int(k): v for k, v in raw.get("site_behort", {}).items()},
 		role_color_rules={int(k): v for k, v in raw.get("role_color_rules", {}).items()},

@@ -30,18 +30,32 @@
   },
 
   "services": {
-    "_comment": "Payroll service code -> role and discipline. 'discipline: null' means the code is ambiguous and must be refined from ZaWin (e.g. an assistant pool spanning several disciplines). 'clinical' marks staff who work chairside.",
+    "_comment": "Payroll service code -> role and discipline. 'discipline: null' means the code is ambiguous and must be refined from ZaWin (e.g. an assistant pool spanning several disciplines). Set it where the pool should stay together whatever the agenda says — apprentices, for instance, are a department of their own so they do not count as capacity in a clinical one. 'clinical' marks staff who work chairside.",
     "100": { "designation": "Dentist", "discipline": "Omnipractice", "clinical": true },
     "110": { "designation": "Orthodontist", "discipline": "Orthodontics", "clinical": true },
     "120": { "designation": "Dental hygienist", "discipline": "Dental Hygiene", "clinical": true },
     "200": { "designation": "Dental assistant", "discipline": null, "clinical": true },
+    "250": { "designation": "Apprentice", "discipline": "Apprenticeship", "clinical": true },
     "900": { "designation": "Administration", "discipline": "Administration", "clinical": false }
   },
 
   "admin_service": "900",
 
+  "_comment_discipline_labels": "(regex, discipline), first match wins, searched in the cleaned label of every presence row. This is how a practice's own shorthand — 'PRES ORTHO', 'PRES HD' — names a discipline for staff whose payroll service does not. Labels matching nothing here are still read: the words in them are matched against BEHANDLER.Initialen, so 'PRES CFO' inherits whichever discipline CFO is filed under, with no configuration at all. Check your own vocabulary with: zawin values TAGPLANTERMIN Beschreibung. The build also logs the commonest label words nothing claimed — anything there that names a discipline belongs in this list.",
+  "discipline_labels": [
+    ["\\bortho", "Orthodontics"],
+    ["\\bhd\\b|\\bhyg", "Dental Hygiene"],
+    ["\\bste\\b|\\bsteri", "Sterilization"]
+  ],
+
+  "default_discipline": "Omnipractice",
+  "_comment_default_discipline": "Where a bare 'PRES' puts someone. Most practices have one main floor that needs no marking in the agenda, and this names it. Set it to null instead if an unmarked label really means nothing at your practice — those rows are then left out of the count rather than counted for anyone.",
+
+  "disciplines": [],
+  "_comment_disciplines": "Disciplines that must exist even though no service, label rule or colour rule mentions them. Usually empty: a Department is emitted for every discipline named anywhere above, so autoshift's Discipline Branch Config always has something to link to.",
+
   "role_color_rules": {
-    "_comment": "BEHANDLER.FarbeTermin (default appointment colour, an OLE_COLOR int: R + G*256 + B*65536) -> a Scheduling Role someone holds in addition to their designation-derived one. Optional 'max_rooms' overrides the role's default of 1. Practice-specific judgement calls like this belong in a private companion profile (see cmdb_frappe), not here."
+    "_comment": "BEHANDLER.FarbeTermin (default appointment colour, an OLE_COLOR int: R + G*256 + B*65536) -> what that colour says about the person. 'role' grants a Scheduling Role in addition to their designation-derived one, with optional 'max_rooms' overriding the role's default of 1. 'primary' instead makes the colour decide their discipline outright — for work that leaves no trace in the label, where the practice has already marked the person by colouring their agenda column. A rule may do either or both. Practice-specific judgement calls like this belong in a private companion profile (see cmdb_frappe), not here."
   },
 
   "categories": {
@@ -77,7 +91,8 @@
 
   "thresholds": {
     "_comment": "Defaults are reasonable starting points; verify each against your own data before trusting the output.",
-    "ortho": 0.5,
+    "discipline_dominance": 0.5,
+    "ambiguous_high": 0.75,
     "reception": 0.4,
     "min_presence_rows": 20,
     "min_worked_rows": 30,

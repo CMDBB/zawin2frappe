@@ -128,6 +128,8 @@ def zawin_profile(context):
 					"branches": p.branches,
 					"services": len(p.services),
 					"label_rules": len(p.label_rules),
+					"disciplines": list(p.all_disciplines),
+					"default_discipline": p.default_discipline,
 					"overrides": {k: str(p.override_path(k)) for k in p.overrides},
 				},
 				indent=2,

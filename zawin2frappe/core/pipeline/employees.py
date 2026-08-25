@@ -1,8 +1,8 @@
 """Employee and the config scaffolding it links to.
 
 Accounting is authoritative for identity, FTE, service and dates. ZaWin
-contributes only what accounting does not record: which assistants work ortho,
-and the agenda link used later for shift assignments.
+contributes only what accounting does not record: which discipline the pooled
+staff work in, and the agenda link used later for shift assignments.
 
 Emits in dependency order: Department, Designation, Branch, Shift Type,
 Shift Location, then Employee.
@@ -50,10 +50,21 @@ UNKNOWN_DOB = "1900-01-01"
 GENDER_UNSTATED = "Prefer not to say"
 
 
-def build_departments(spine: pd.DataFrame) -> pd.DataFrame:
+def _department_names(spine: pd.DataFrame) -> list[str]:
+	"""Every department the import can link to.
+
+	The departments people are actually filed under, plus every discipline the
+	profile names. The second half matters because a Scheduling Role, a Shift
+	Location or an autoshift Discipline Branch Config may point at a discipline
+	nobody happens to be filed under this month, and a link with no target
+	fails validation. An empty department costs one row.
+	"""
 	col = "department" if "department" in spine else "discipline_resolved"
-	names = sorted(spine[col].dropna().unique())
-	return pd.DataFrame({"department_name": names, "company": settings.get().company})
+	return sorted(set(spine[col].dropna()) | set(settings.get().all_disciplines))
+
+
+def build_departments(spine: pd.DataFrame) -> pd.DataFrame:
+	return pd.DataFrame({"department_name": _department_names(spine), "company": settings.get().company})
 
 
 def build_designations(spine: pd.DataFrame) -> pd.DataFrame:
@@ -87,8 +98,7 @@ def build_shift_locations(spine: pd.DataFrame) -> pd.DataFrame:
 	"""
 	from .location import location_name
 
-	col = "department" if "department" in spine else "discipline_resolved"
-	disciplines = sorted(spine[col].dropna().unique())
+	disciplines = _department_names(spine)
 	rows = [
 		{
 			"location_name": location_name(branch, discipline),

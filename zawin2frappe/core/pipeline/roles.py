@@ -15,7 +15,10 @@ read from the active profile rather than hardcoded here:
 
   colour     BEHANDLER.FarbeTermin (default appointment colour) mapped via
              `profile.role_color_rules` — e.g. a pink default marks someone
-             as also working sterilization.
+             as also working sterilization. A rule may instead (or as well)
+             be `primary`, which places the person in that discipline rather
+             than adding a role; that half is `pipeline.discipline`'s, and a
+             rule naming no `role` adds nothing here.
   funktion   BEHANDLER.Funktion == `profile.zawin['funktion_prophylaxis']`
              marks someone as also working prophylaxis. This used to reroute
              their `department` to a parked, unscheduled "Prophylaxis" bucket
@@ -83,6 +86,11 @@ def build_scheduling_roles(spine: pd.DataFrame) -> pd.DataFrame:
 	]
 
 	for rule in prof.role_color_rules.values():
+		# A rule with no `role` only places people in a discipline
+		# (`pipeline.discipline.colour_placements`); the role their designation
+		# already gives them staffs it, so there is nothing extra to create.
+		if not rule.get("role"):
+			continue
 		rows.append(
 			{
 				"role_name": rule["role"],
@@ -144,7 +152,7 @@ def build_employee_scheduling_roles(spine: pd.DataFrame, columns: pd.DataFrame |
 				subset=["default_color"]
 			)
 			by_color["scheduling_role"] = by_color["default_color"].map(
-				lambda c: rule["role"] if (rule := prof.role_color_rules.get(int(c))) else None
+				lambda c: (prof.role_color_rules.get(int(c)) or {}).get("role")
 			)
 			hits = by_color.dropna(subset=["scheduling_role"])
 			frames.append(
