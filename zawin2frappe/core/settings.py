@@ -43,6 +43,11 @@ class Service:
 	designation: str | None = None
 	discipline: str | None = None
 	clinical: bool = False
+	#: For an apprenticeship service: the service its apprentices become once
+	#: they qualify. Setting it is what tells `pipeline.apprenticeship` this
+	#: code is an apprenticeship at all, and accounting is not always prompt
+	#: about retiring the filing itself. Null everywhere else.
+	graduates_to: str | None = None
 
 
 @dataclass(frozen=True)
@@ -134,6 +139,11 @@ class Profile:
 		return {code for code, s in self.services.items() if s.clinical}
 
 	@property
+	def apprenticeship_services(self) -> dict[str, str]:
+		"""Apprenticeship service code -> the service it graduates into."""
+		return {code: s.graduates_to for code, s in self.services.items() if s.graduates_to}
+
+	@property
 	def all_disciplines(self) -> tuple[str, ...]:
 		"""Every discipline this profile can place someone in.
 
@@ -204,6 +214,16 @@ def load(path: str | Path | None = None) -> Profile:
 	raw = _strip_comments(json.loads(p.read_text(encoding="utf-8")))
 	log.info("practice profile: %s (%s)", raw.get("name", p.stem), p)
 
+	services = {k: Service(**v) for k, v in raw.get("services", {}).items()}
+	# A graduate service that does not exist would silently un-designate every
+	# apprentice who finished, which is worse than the stale filing it fixes.
+	for code, service in services.items():
+		if service.graduates_to and service.graduates_to not in services:
+			raise ValueError(
+				f"{p.name}: service {code} graduates_to {service.graduates_to!r}, "
+				f"which is not a service in this profile"
+			)
+
 	return Profile(
 		name=raw.get("name", p.stem),
 		source_path=p.resolve(),
@@ -214,7 +234,7 @@ def load(path: str | Path | None = None) -> Profile:
 		day_start=int(raw["practice_day"]["start"]),
 		day_end=int(raw["practice_day"]["end"]),
 		midday=int(raw["practice_day"]["midday"]),
-		services={k: Service(**v) for k, v in raw.get("services", {}).items()},
+		services=services,
 		admin_service=raw.get("admin_service"),
 		absence_categories=tuple(raw.get("categories", {}).get("absence", [])),
 		non_clinical_categories=tuple(raw.get("categories", {}).get("non_clinical", [])),

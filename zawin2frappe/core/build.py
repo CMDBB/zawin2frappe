@@ -15,6 +15,7 @@ from typing import Any
 from . import extract, roster
 from .db import DERIVED_DIR, write_derived
 from .pipeline import (
+	apprenticeship,
 	assignments,
 	calendar,
 	discipline,
@@ -84,6 +85,10 @@ def run(
 		)
 
 	annotated = extract.agenda_with_labels(date_from=signal_from, date_to=signal_to)
+	# Before discipline: a finished apprentice is re-filed under the service
+	# they graduated into, and it is that service's discipline — often none, to
+	# be resolved from the agenda — that the rest of the build must see.
+	spine = apprenticeship.apply(spine, annotated, columns)
 	spine = discipline.refine(spine, columns, annotated)
 	spine = scope.apply(spine, annotated, columns)
 

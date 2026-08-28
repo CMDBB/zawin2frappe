@@ -30,12 +30,12 @@
   },
 
   "services": {
-    "_comment": "Payroll service code -> role and discipline. 'discipline: null' means the code is ambiguous and must be refined from ZaWin (e.g. an assistant pool spanning several disciplines). Set it where the pool should stay together whatever the agenda says — apprentices, for instance, are a department of their own so they do not count as capacity in a clinical one. 'clinical' marks staff who work chairside.",
+    "_comment": "Payroll service code -> role and discipline. 'discipline: null' means the code is ambiguous and must be refined from ZaWin (e.g. an assistant pool spanning several disciplines). Set it where the pool should stay together whatever the agenda says — apprentices, for instance, are a department of their own so they do not count as capacity in a clinical one. 'clinical' marks staff who work chairside. 'graduates_to' marks an apprenticeship and names the service its apprentices become: accounting is not always prompt about retiring the filing, so a finished apprentice is re-filed under it from the agenda (see pipeline/apprenticeship.py).",
     "100": { "designation": "Dentist", "discipline": "Omnipractice", "clinical": true },
     "110": { "designation": "Orthodontist", "discipline": "Orthodontics", "clinical": true },
     "120": { "designation": "Dental hygienist", "discipline": "Dental Hygiene", "clinical": true },
     "200": { "designation": "Dental assistant", "discipline": null, "clinical": true },
-    "250": { "designation": "Apprentice", "discipline": "Apprenticeship", "clinical": true },
+    "250": { "designation": "Apprentice", "discipline": "Apprenticeship", "clinical": true, "graduates_to": "200" },
     "900": { "designation": "Administration", "discipline": "Administration", "clinical": false }
   },
 
@@ -93,6 +93,9 @@
     "_comment": "Defaults are reasonable starting points; verify each against your own data before trusting the output.",
     "discipline_dominance": 0.5,
     "ambiguous_high": 0.75,
+    "apprenticeship_grace_months": 3,
+    "apprenticeship_max_years": 5,
+    "apprenticeship_min_school_days": 20,
     "reception": 0.4,
     "min_presence_rows": 20,
     "min_worked_rows": 30,

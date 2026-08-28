@@ -105,6 +105,30 @@ to. Keeping a pool out of a clinical discipline is therefore just a matter of
 giving it one of its own — set the service's `discipline` and apprentices stop
 counting as omnipractice capacity.
 
+### Apprenticeships that have ended
+
+Payroll is quick to file an apprentice and slow to stop: one qualified
+assistant here was still filed under `Apprent` six years after finishing, and
+so sat in a department of her own instead of counting as the ortho capacity she
+is. Length cannot correct that — an apprenticeship runs three years, four
+elsewhere, longer again for anyone held back — but school attendance can. An
+apprentice keeps going back to school, those days are already classified
+`training` by `label_rules`, and when the apprenticeship ends they stop:
+
+| | last school day | still working | verdict |
+|---|---|---|---|
+| current apprentice | 2027-06-29 | 2027-07-01 | in training |
+| finished apprentice | 2025-09-26 | 2026-12-18 | qualified |
+
+Give the apprenticeship service a `graduates_to` naming the service its
+apprentices become, and anyone still working `apprenticeship_grace_months`
+after their last school day is re-filed under it — designation, discipline and
+clinical status all following the new code, so a graduate whose service leaves
+the discipline open is placed by the same agenda signal as everyone else in the
+pool. Leave `graduates_to` unset and nothing happens: accounting's filing
+stands, as it does for any apprentice whose agenda records no school days at
+all.
+
 ### Curated overrides
 
 Some links cannot be inferred — a member of staff recorded under a former
