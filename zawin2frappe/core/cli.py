@@ -152,6 +152,52 @@ def cmd_build(args) -> None:
 		print(f"   {result.fte_outside_tolerance} people outside the FTE band (report only)")
 
 
+def cmd_binding(args) -> None:
+	"""Rank staff by how closely their working week repeats.
+
+	The calibration surface for `binding_settled_min`. The score distribution is
+	continuous — there is no natural break to read a threshold off — so the
+	threshold is a judgement about this practice and has to be made against real
+	numbers. Prints everyone by default rather than only the eligible services,
+	because the useful question is usually whether the people the profile marks
+	eligible score any differently from the people it does not.
+	"""
+	from .db import query
+	from .pipeline import apprenticeship, binding, calendar, discipline, location, presence, scope
+
+	spine = roster.build_spine()
+	columns = roster.resolve_columns(spine)
+	annotated = extract.agenda_with_labels(date_from=args.signal_from, date_to=args.signal_to)
+	spine = apprenticeship.apply(spine, annotated, columns)
+	spine = discipline.refine(spine, columns, annotated)
+	spine = scope.apply(spine, annotated, columns)
+
+	agenda = extract.agenda_with_labels(date_from=args.date_from, date_to=args.date_to)
+	patient = extract.patient_activity(args.date_from, args.date_to)
+	raw, _styles = presence.build(agenda, patient, calendar.practice_days(query))
+	person_level = presence.to_person_level(raw, columns)
+	person_level = location.apply(person_level, columns, query)
+	person_level = presence.collapse_daily(person_level, patient, columns)
+
+	resolved = binding.resolve(spine, person_level, as_of=args.date_to)
+	if resolved.empty:
+		print("no schedulable people")
+		return
+	if args.eligible_only:
+		resolved = resolved[resolved["eligible"]]
+	_show(resolved, None if args.all else 60)
+
+	scored = resolved["settledness"].dropna().sort_values(ascending=False).reset_index(drop=True)
+	if len(scored) > 1:
+		print(f"\nscored {len(scored)} people, {scored.min():.3f} .. {scored.max():.3f}")
+		print("largest gaps in the ranking — candidate thresholds:")
+		gaps = (-scored.diff()).dropna()
+		for position in gaps.sort_values(ascending=False).head(5).index:
+			above, below = scored[position - 1], scored[position]
+			print(f"  cut at {below:.3f}..{above:.3f}  (gap {above - below:.3f}, {position} people above)")
+	_save(args, resolved)
+
+
 def cmd_restore(args) -> None:
 	"""Refresh the local SQL Server from a nightly backup on the share."""
 	from . import restore as R
@@ -293,6 +339,18 @@ def build_parser() -> argparse.ArgumentParser:
 	)
 	bl.add_argument("--signal-to", default=None)
 	bl.set_defaults(func=cmd_build)
+
+	bd = sub.add_parser("binding", help="rank staff by how closely their working week repeats")
+	bd.add_argument("--date-from", default=dfrom, help=f"history the score reads (default {dfrom})")
+	bd.add_argument("--date-to", default=dto, help=f"end of that history (default {dto})")
+	bd.add_argument("--signal-from", default=None)
+	bd.add_argument("--signal-to", default=None)
+	bd.add_argument(
+		"--eligible-only", action="store_true", help="only services the profile marks assignments_binding"
+	)
+	bd.add_argument("--all", action="store_true", help="print every row")
+	bd.add_argument("--save", metavar="NAME.csv")
+	bd.set_defaults(func=cmd_binding)
 
 	r = sub.add_parser("restore", help="refresh the local SQL Server from a nightly backup")
 	r.add_argument("--list", action="store_true", help="show what is on the share and stop")

@@ -110,8 +110,15 @@ def _comparable(value):
 	Frappe returns Time fields as `timedelta`, whose str() drops the leading
 	zero — "7:00:00" against the "07:00:00" we wrote. Comparing those naively
 	reports a change on every run, which buries the changes that are real.
+
+	Unset is one value, not two. Frappe stores an empty Select as NULL or as ""
+	depending on the column, and the extract emits "" for "no override"; without
+	folding them together every blank optional field reports as changed on every
+	run, which is the same noise in a different place.
 	"""
 	value = _clean(value)
+	if value is None:
+		return ""
 	if isinstance(value, datetime.timedelta):
 		total = int(value.total_seconds())
 		return f"{total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}"

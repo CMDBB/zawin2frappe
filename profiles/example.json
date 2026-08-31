@@ -31,8 +31,9 @@
 
   "services": {
     "_comment": "Payroll service code -> role and discipline. 'discipline: null' means the code is ambiguous and must be refined from ZaWin (e.g. an assistant pool spanning several disciplines). Set it where the pool should stay together whatever the agenda says — apprentices, for instance, are a department of their own so they do not count as capacity in a clinical one. 'clinical' marks staff who work chairside. 'graduates_to' marks an apprenticeship and names the service its apprentices become: accounting is not always prompt about retiring the filing, so a finished apprentice is re-filed under it from the agenda (see pipeline/apprenticeship.py).",
-    "100": { "designation": "Dentist", "discipline": "Omnipractice", "clinical": true },
-    "110": { "designation": "Orthodontist", "discipline": "Orthodontics", "clinical": true },
+    "_comment_assignments_binding": "'assignments_binding' marks a service whose holders decide their own working week, so the practice schedules everyone else around them. The Scheduling Roles built from it are emitted with autoshift's assignments_binding flag, and a bound holder then keeps exactly the Shift Assignments already on the books — the optimiser may not add, move or drop any of them. Which jobs have that pull is a fact about one practice's power structure and nothing here infers it; default false. pipeline/binding.py then measures, per holder, whether their week has actually settled, and writes 'Not Binding' on anyone it has not, so a recent hire is never frozen to a pattern they do not have yet. Calibrate the threshold with: zawin binding",
+    "100": { "designation": "Dentist", "discipline": "Omnipractice", "clinical": true, "assignments_binding": true },
+    "110": { "designation": "Orthodontist", "discipline": "Orthodontics", "clinical": true, "assignments_binding": true },
     "120": { "designation": "Dental hygienist", "discipline": "Dental Hygiene", "clinical": true },
     "200": { "designation": "Dental assistant", "discipline": null, "clinical": true },
     "250": { "designation": "Apprentice", "discipline": "Apprenticeship", "clinical": true, "graduates_to": "200" },
@@ -103,7 +104,16 @@
     "dominance_margin": 30,
     "substantial_minutes": 120,
     "weeks_per_year": 46,
-    "fte_tolerance": 0.4
+    "fte_tolerance": 0.4,
+    "_comment_binding": "Settled-schedule detection, for services marked assignments_binding. binding_settled_min is the weighted overlap at or above which someone's schedule counts as settled: 1.0 is the same days every cycle, 0.5 is roughly half the days in a given week not being the days they usually work. The distribution is continuous with no natural break, so this is a judgement — read it off `zawin binding`, which prints the ranking and the largest gaps in it. binding_min_weeks is the worked weeks below which there is nothing to measure and the person is held back regardless.",
+    "binding_settled_min": 0.75,
+    "binding_half_life_weeks": 13,
+    "binding_lookback_weeks": 52,
+    "binding_min_weeks": 12,
+    "_comment_binding_cycle": "Not every rota is weekly — a four-week orthodontic rota is a settled schedule that a weekly reading rejects outright. The modal pattern is therefore fitted per phase of a cycle up to binding_max_cycle_weeks, each extra phase costing binding_cycle_penalty so that a longer period has to earn its parameters, and a phase with fewer than binding_min_phase_weeks weeks behind it is not fitted at all. Set binding_max_cycle_weeks to 1 for a practice that runs nothing but weekly patterns.",
+    "binding_max_cycle_weeks": 4,
+    "binding_cycle_penalty": 0.05,
+    "binding_min_phase_weeks": 4
   },
 
   "zawin": {
@@ -123,8 +133,10 @@
   },
 
   "overrides": {
-    "_comment": "Optional paths, relative to this file, to human-confirmed corrections the matcher cannot infer — renames, and people whose real job differs from their payroll filing. These name identifiable individuals: keep them out of any public repository.",
+    "_comment": "Optional paths, relative to this file, to human-confirmed corrections the matcher cannot infer — renames, people whose real job differs from their payroll filing, and binding decisions the agenda cannot date. These name identifiable individuals: keep them out of any public repository.",
+    "_comment_binding_scope": "binding_scope: columns personnel_no, binding_override ('Binding' / 'Not Binding' / blank to inherit), reason. Wins over the measured score, which is evidence rather than a verdict: someone who changed their week last month reads as unsettled for a quarter afterwards even when everyone in the building knows the new week is final.",
     "identity_links": null,
-    "staff_scope": null
+    "staff_scope": null,
+    "binding_scope": null
   }
 }

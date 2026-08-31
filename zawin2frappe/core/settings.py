@@ -48,6 +48,13 @@ class Service:
 	#: code is an apprenticeship at all, and accounting is not always prompt
 	#: about retiring the filing itself. Null everywhere else.
 	graduates_to: str | None = None
+	#: Whether holders of this service set their own working week, so that the
+	#: Scheduling Roles built from it are emitted with autoshift's
+	#: `assignments_binding` flag. Which jobs have that pull is a fact about one
+	#: practice's power structure and nothing in this package infers it — see
+	#: `pipeline.binding`, which only ever takes binding away from an individual
+	#: whose week is not actually settled.
+	assignments_binding: bool = False
 
 
 @dataclass(frozen=True)

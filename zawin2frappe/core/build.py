@@ -17,6 +17,7 @@ from .db import DERIVED_DIR, write_derived
 from .pipeline import (
 	apprenticeship,
 	assignments,
+	binding,
 	calendar,
 	discipline,
 	employees,
@@ -123,10 +124,26 @@ def run(
 			)
 
 	if target in ("employees", "all"):
+		# Whose week has settled, for the roles the profile makes binding. Needs
+		# the person-level history, so a `target="employees"` build cannot check
+		# anyone — `binding.resolve` says so rather than binding them unchecked.
+		settled = binding.resolve(spine, person_level, as_of=date_to)
+		if write_reports and not settled.empty:
+			write_derived(settled, "binding_review.csv")
+		result.notes["binding"] = {
+			"eligible": int(settled["eligible"].sum()) if not settled.empty else 0,
+			"held_back": int((settled["binding_override"] == binding.OVERRIDE_NOT_BINDING).sum())
+			if not settled.empty
+			else 0,
+			"checked": person_level is not None,
+		}
+
 		result.records.update(employees.build_all(spine, columns, as_of=date_to))
 		# After Employee: both link to it, so it must already be in the write order.
 		result.records["Scheduling Role"] = roles.build_scheduling_roles(spine)
-		result.records["Employee Scheduling Role"] = roles.build_employee_scheduling_roles(spine, columns)
+		result.records["Employee Scheduling Role"] = roles.build_employee_scheduling_roles(
+			spine, columns, settled
+		)
 
 	if target in ("assignments", "all"):
 		shift_rows = assignments.build(person_level, spine)

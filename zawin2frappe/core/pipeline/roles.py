@@ -28,6 +28,12 @@ read from the active profile rather than hardcoded here:
 Secondary roles are always emitted as `Scheduling Role`s when configured, even
 before anyone qualifies for them — same as Branch or Shift Type, they are
 config, not data.
+
+A role also carries whether its holders set their own working week
+(`assignments_binding`), which comes from the service the role was built from
+or from the colour rule that granted it. `pipeline.binding` then decides, per
+holder, whether that person's week has actually settled enough to be frozen;
+see its docstring for the split between the two.
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ import pandas as pd
 
 from .. import extract, settings
 from ..roster import funktion_prophylaxis
+from .binding import OVERRIDE_INHERIT
 from .employees import department_link
 
 #: Rooms one holder covers, absent an explicit override in the rule.
@@ -68,12 +75,40 @@ def _role_namer(spine: pd.DataFrame) -> tuple[pd.Series, dict]:
 	return designation, {"pairs": pairs, "name": name}
 
 
+def _binding_roles(spine: pd.DataFrame) -> set[str]:
+	"""Role names whose holders set their own week, from the profile.
+
+	A role is binding if any service that produces it is marked
+	`assignments_binding`. In practice a role is built from exactly one service
+	— the designation comes from it — so "any" only matters for the pathological
+	case of two services sharing a designation *and* a discipline, where erring
+	towards binding leaves the decision to `pipeline.binding` per person rather
+	than dropping it silently.
+	"""
+	prof = settings.get()
+	designation = _designation(spine)
+	_col, ctx = _role_namer(spine)
+	names = pd.Series(
+		[ctx["name"](d, r) for d, r in zip(spine["discipline_resolved"], designation, strict=False)],
+		index=spine.index,
+	)
+	binding = spine["service_no"].map(lambda c: prof.service(c).assignments_binding)
+	out = set(names[binding.fillna(False).astype(bool)].dropna())
+	out |= {
+		rule["role"]
+		for rule in prof.role_color_rules.values()
+		if rule.get("role") and rule.get("assignments_binding")
+	}
+	return out
+
+
 def build_scheduling_roles(spine: pd.DataFrame) -> pd.DataFrame:
 	"""One Scheduling Role per (discipline, designation) among schedulable
 	employees, plus every role a configured secondary signal can grant."""
 	prof = settings.get()
 	schedulable = spine[spine["schedulable"]]
 	_designation_col, ctx = _role_namer(schedulable)
+	binding = _binding_roles(schedulable)
 
 	rows = [
 		{
@@ -117,10 +152,16 @@ def build_scheduling_roles(spine: pd.DataFrame) -> pd.DataFrame:
 		)
 
 	out = pd.DataFrame(rows, columns=["role_name", "discipline", "max_rooms", "active"])
-	return out.drop_duplicates(subset="role_name").sort_values("role_name").reset_index(drop=True)
+	out = out.drop_duplicates(subset="role_name").sort_values("role_name").reset_index(drop=True)
+	out["assignments_binding"] = out["role_name"].isin(binding).astype(int)
+	return out
 
 
-def build_employee_scheduling_roles(spine: pd.DataFrame, columns: pd.DataFrame | None) -> pd.DataFrame:
+def build_employee_scheduling_roles(
+	spine: pd.DataFrame,
+	columns: pd.DataFrame | None,
+	binding: pd.DataFrame | None = None,
+) -> pd.DataFrame:
 	"""One row per (employee, role) an employee actually holds.
 
 	`employee` is the payroll personnel number directly: HR Settings is
@@ -128,6 +169,11 @@ def build_employee_scheduling_roles(spine: pd.DataFrame, columns: pd.DataFrame |
 	(`loaders/bootstrap.py`), so that number *is* the Employee docname. No
 	link resolution is needed, only write order — Employee must already exist
 	(see `core/build.py`).
+
+	`binding` is `pipeline.binding.resolve`'s verdict per person. It is written
+	only onto rows whose role is actually binding: elsewhere the role carries no
+	flag to override, and a stray "Not Binding" would read as a decision about
+	someone it was never made about.
 	"""
 	prof = settings.get()
 	schedulable = spine[spine["schedulable"]].copy()
@@ -173,4 +219,15 @@ def build_employee_scheduling_roles(spine: pd.DataFrame, columns: pd.DataFrame |
 	out = out.dropna(subset=["employee", "scheduling_role"]).drop_duplicates()
 	out["name"] = out["employee"].astype(str) + "-" + out["scheduling_role"]
 	out["active"] = 1
+
+	binding_roles = _binding_roles(schedulable)
+	decision = (
+		binding.set_index("personnel_no")["binding_override"]
+		if binding is not None and not binding.empty
+		else pd.Series(dtype=object)
+	)
+	out["binding_override"] = [
+		decision.get(employee, OVERRIDE_INHERIT) if role in binding_roles else OVERRIDE_INHERIT
+		for employee, role in zip(out["employee"], out["scheduling_role"], strict=False)
+	]
 	return out.sort_values(["employee", "scheduling_role"]).reset_index(drop=True)

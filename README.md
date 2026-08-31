@@ -24,6 +24,17 @@ import's idempotency key, and `Employee.custom_initials`, carrying `BEHANDLER.In
 — the short code a practice actually calls someone by on a paper roster. Anyone with no
 agenda column has none, so the field stays editable.
 
+### Tests
+
+`tests/` is a pure-Python suite — no ZaWin, no Frappe, no site, no practice
+data. `core/pipeline/binding.py` reads only the collapsed person-level frame and
+the profile, which is what makes the whole settled-schedule measure testable
+against hand-written schedules.
+
+```bash
+uv run pytest tests/
+```
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
@@ -129,11 +140,59 @@ pool. Leave `graduates_to` unset and nothing happens: accounting's filing
 stands, as it does for any apprentice whose agenda records no school days at
 all.
 
+### Schedules the practice does not set
+
+At some practices a group of staff decide their own working week and everyone
+else is scheduled around them. autoshift models that as
+`Scheduling Role.assignments_binding`: a bound holder keeps exactly the Shift
+Assignments already on the books, and the optimiser may not add, move or drop
+any of them.
+
+Two separate questions, answered from two separate places.
+
+**Which jobs may bind** is a fact about one practice's power structure, so it is
+profile data — `"assignments_binding": true` on a service — and nothing here
+infers it. Default false, which is the whole feature off.
+
+**Whose week has actually settled** is a measurement, and it can only ever take
+binding away again. A practitioner who has just arrived, or is mid-change, must
+not be frozen to a pattern that does not exist yet, so they get
+`Employee Scheduling Role.binding_override = "Not Binding"` and are scheduled
+normally. Nobody is ever marked binding whom the profile did not.
+
+The measure is the weighted overlap between each week someone worked and their
+usual week, over a recency-weighted year — 1.0 is the same days every week.
+Weeks they worked nothing are dropped rather than scored, because a fortnight's
+holiday would otherwise read exactly like an unstable schedule.
+
+A week is not the only cycle a practice runs, and assuming it was got this
+badly wrong first time: this practice's orthodontists are on rotas longer than a
+week — one works four days, then three, then two weeks off — and a weekly
+reading rejected all five as unsettled when theirs are among the most regular
+schedules in the building. So the pattern is fitted per phase of a cycle up to
+`binding_max_cycle_weeks`, each extra phase priced at `binding_cycle_penalty` so
+a longer period has to earn its parameters. On this practice's data that price
+is doing real work: five of the thirty-odd eligible staff come back as a rota,
+and none of the forty-odd ineligible ones do.
+
+The score distribution is continuous — there is no natural break to read a
+threshold off — so `binding_settled_min` is a judgement. Calibrate it:
+
+```bash
+zawin binding                  # everyone, ranked, with the largest gaps
+zawin binding --eligible-only  # just the services marked binding
+```
+
+Each build re-runs the check and writes `data/derived/binding_review.csv`
+saying where everyone landed and why.
+
 ### Curated overrides
 
 Some links cannot be inferred — a member of staff recorded under a former
-surname, or someone whose real job differs from their payroll filing. A profile
-may point at CSVs of human-confirmed corrections via its `overrides` block.
+surname, someone whose real job differs from their payroll filing, or a
+practitioner whose new working week is final even though the agenda is still a
+quarter away from saying so. A profile may point at CSVs of human-confirmed
+corrections via its `overrides` block.
 
 **These name identifiable people. Keep them out of public repositories**, along
 with the profile itself: service numbering, branch names and agenda layout
@@ -149,6 +208,7 @@ zawin tables --candidates          # domain-matching tables with row counts
 zawin columns TAGPLANTERMIN        # column metadata
 zawin values BEHANDLER Funktion    # value frequencies — how enums get decoded
 zawin fkscan TAGPLANTERMIN         # infer foreign keys (ZaWin declares none)
+zawin binding                      # how settled each person's working week is
 zawin build all --out data/import  # Frappe Data Import CSVs
 ```
 
