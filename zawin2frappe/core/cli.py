@@ -179,7 +179,8 @@ def cmd_binding(args) -> None:
 	person_level = location.apply(person_level, columns, query)
 	person_level = presence.collapse_daily(person_level, patient, columns)
 
-	resolved = binding.resolve(spine, person_level, as_of=args.date_to)
+	excused = binding.excused_days(agenda, columns)
+	resolved = binding.resolve(spine, person_level, as_of=args.date_to, excused=excused)
 	if resolved.empty:
 		print("no schedulable people")
 		return

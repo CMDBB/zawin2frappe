@@ -25,6 +25,7 @@ from .pipeline import (
 	presence,
 	quality,
 	roles,
+	schedules,
 	scope,
 )
 
@@ -127,7 +128,11 @@ def run(
 		# Whose week has settled, for the roles the profile makes binding. Needs
 		# the person-level history, so a `target="employees"` build cannot check
 		# anyone — `binding.resolve` says so rather than binding them unchecked.
-		settled = binding.resolve(spine, person_level, as_of=date_to)
+		# Booked leave and sick days sit in the slot the shift would have taken,
+		# so they excuse a day rather than count against the pattern. Read from
+		# the assignment window's agenda, which is what person_level came from.
+		excused = binding.excused_days(agenda, columns)
+		settled = binding.resolve(spine, person_level, as_of=date_to, excused=excused)
 		if write_reports and not settled.empty:
 			write_derived(settled, "binding_review.csv")
 		result.notes["binding"] = {
@@ -144,6 +149,17 @@ def run(
 		result.records["Employee Scheduling Role"] = roles.build_employee_scheduling_roles(
 			spine, columns, settled
 		)
+
+		# A settled week is a rule, so it goes to HRMS as one. Emitted disabled:
+		# the handover from imported rows to generated ones happens when an
+		# administrator approves the schedule, not when this build runs.
+		emitted = schedules.build(
+			person_level, settled, spine, as_of=date_to, create_shifts_after=date_to, excused=excused
+		)
+		result.records.update(emitted)
+		result.notes["schedules"] = {
+			doctype: len(rows) for doctype, rows in emitted.items() if not rows.empty
+		}
 
 	if target in ("assignments", "all"):
 		shift_rows = assignments.build(person_level, spine)

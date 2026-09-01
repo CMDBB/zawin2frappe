@@ -47,7 +47,20 @@ KEY_FIELD = {
 	# Deterministic autoname (format:{employee}-{scheduling_role}), precomputed
 	# by pipeline.roles to match exactly, so it can double as the upsert key.
 	"Employee Scheduling Role": "name",
+	# Named after its own content by pipeline.schedules, so the name IS the key.
+	"Shift Schedule": "name",
+	"Shift Schedule Assignment": "custom_zawin_key",
 }
+
+#: Child tables written from a plain tuple of values: doctype -> {table
+#: fieldname: the child field each value fills}. They are never *compared*,
+#: because the only one here belongs to a Shift Schedule whose docname already
+#: encodes its content — a name match is a content match.
+TABLE_FIELDS = {"Shift Schedule": {"repeat_on_days": "day"}}
+
+#: Columns that are instructions to this loader rather than document fields.
+#: Applied after the document exists, since both need its name.
+ANNOTATIONS = ("zawin_tag", "zawin_comment")
 
 #: Doctype -> the field that names a Department, needing the same "ERPNext
 #: appends the company abbreviation" resolution as Employee.department.
@@ -58,7 +71,7 @@ DEPARTMENT_FIELD = {
 }
 
 #: Doctypes to submit after insert.
-SUBMIT = {"Shift Assignment"}
+SUBMIT = {"Shift Assignment", "Shift Schedule"}
 
 #: Fieldtypes Frappe stores as a number and cannot leave NULL: writing None
 #: lands as 0, so None and 0 must compare equal or the record reports as
@@ -102,6 +115,25 @@ def _clean(value):
 	if hasattr(value, "item"):  # numpy scalar
 		return value.item()
 	return value
+
+
+def _has_comment(doc, text: str) -> bool:
+	"""Whether this exact comment is already on the document.
+
+	Every build re-runs, and a comment is append-only: without this the same
+	explanation accumulates one copy per import.
+	"""
+	return bool(
+		frappe.db.exists(
+			"Comment",
+			{
+				"reference_doctype": doc.doctype,
+				"reference_name": doc.name,
+				"comment_type": "Comment",
+				"content": text,
+			},
+		)
+	)
 
 
 def _comparable(value):
@@ -176,12 +208,18 @@ class FrappeDocSink:
 		return self._numeric_cache[doctype]
 
 	def _differs(self, doctype: str, current: dict, payload: dict) -> bool:
-		"""Whether the stored row disagrees with what we would write."""
+		"""Whether the stored row disagrees with what we would write.
+
+		Only over the fields `_existing` was able to read back: a child table is
+		not a column and an annotation is not a field, so both are absent from
+		`current` and comparing them would report a change on every single run.
+		"""
 		if current is None:
 			return True
 		numeric = self._numeric_fields(doctype)
+		unreadable = set(TABLE_FIELDS.get(doctype, {})) | set(ANNOTATIONS)
 		for field, wanted in payload.items():
-			if field in IGNORE_ON_COMPARE:
+			if field in IGNORE_ON_COMPARE or field in unreadable:
 				continue
 			have = current.get(field)
 			if field in numeric:
@@ -241,7 +279,11 @@ class FrappeDocSink:
 			raise ValueError(f"{missing_key} {doctype} rows have no {key_field}")
 
 		log.debug(f'trying {doctype} write with {key_field=}')
-		existing = self._existing(doctype, key_field, keys, list(payloads[0]))
+		# Child tables are not columns and annotations are not fields, so neither
+		# can be read back for comparison.
+		skip = set(TABLE_FIELDS.get(doctype, {})) | set(ANNOTATIONS)
+		comparable = [f for f in payloads[0] if f not in skip]
+		existing = self._existing(doctype, key_field, keys, comparable)
 
 		with bulk_load_flags():
 			self._write_rows(doctype, key_field, payloads, existing, stats)
@@ -275,22 +317,60 @@ class FrappeDocSink:
 			if i % CHUNK == CHUNK - 1 and not self.dry_run:
 				frappe.db.commit()
 
+	def _apply(self, doc, doctype: str, payload: dict) -> dict:
+		"""Set every real field on `doc`, and hand back the annotations.
+
+		A child table arrives as a plain sequence of values — ("Monday",
+		"Tuesday") — because that is what the pipeline has to say about it; the
+		child fieldname it fills is this loader's business, not the pipeline's.
+		"""
+		tables = TABLE_FIELDS.get(doctype, {})
+		annotations = {}
+		for field, value in payload.items():
+			if field == "docstatus":
+				continue
+			if field in ANNOTATIONS:
+				annotations[field] = value
+			elif field in tables:
+				doc.set(field, [{tables[field]: v} for v in (value or ())])
+			else:
+				doc.set(field, value)
+		return annotations
+
+	def _annotate(self, doc, annotations: dict) -> None:
+		"""Tag and comment a written document.
+
+		Both are how a person is told something about a record that is not part
+		of the record — here, that a schedule describes a real rota but must not
+		be switched on. A failure to annotate must not fail the row: the document
+		itself is correct and the note is commentary on it.
+		"""
+		tag = (annotations.get("zawin_tag") or "").strip()
+		comment = (annotations.get("zawin_comment") or "").strip()
+		try:
+			if tag:
+				from frappe.desk.doctype.tag.tag import add_tag
+
+				add_tag(tag, doc.doctype, doc.name)
+			if comment and not _has_comment(doc, comment):
+				doc.add_comment("Comment", comment)
+		except Exception as exc:
+			log.warning("could not annotate %s %s: %s", doc.doctype, doc.name, exc)
+
 	def _insert(self, doctype: str, payload: dict, stats: Counter) -> None:
 		doc = frappe.new_doc(doctype)
-		for field, value in payload.items():
-			if field != "docstatus":
-				doc.set(field, value)
+		annotations = self._apply(doc, doctype, payload)
 		doc.insert(ignore_permissions=True)
 		if self.submit and doctype in SUBMIT:
 			doc.submit()
+		self._annotate(doc, annotations)
 		stats["inserted"] += 1
 
 	def _update(self, doctype: str, name: str, payload: dict, stats: Counter) -> None:
 		doc = frappe.get_doc(doctype, name)
-		for field, value in payload.items():
-			if field != "docstatus":
-				doc.set(field, value)
+		annotations = self._apply(doc, doctype, payload)
 		doc.save(ignore_permissions=True)
+		self._annotate(doc, annotations)
 		if self.submit and doctype in SUBMIT and doc.docstatus == 0:
 			doc.submit()
 		stats["updated"] += 1

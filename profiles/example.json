@@ -62,7 +62,9 @@
   "categories": {
     "_comment": "Names as they appear in TAGPLANTERMINKATEGORIE.Bezeichnung_1. List with: zawin categories",
     "absence": ["Holiday", "Absent"],
-    "non_clinical": ["Training", "Meeting"]
+    "non_clinical": ["Training", "Meeting"],
+    "_comment_excused": "The subset of 'absence' recorded in the slot the shift would otherwise have occupied — booked leave and sick days, as against a background 'away' banner covering whole stretches of calendar. pipeline/binding.py excuses those days rather than counting them as days not worked, so a fortnight's holiday neither creates a settled pattern nor breaks one. Check which of yours are slot-shaped before listing them: compare how often each category lands on a weekday the person never works (near 0% means it marks a real shift; several percent means it is a banner) and how many full-day rows one person can accumulate.",
+    "excused": ["Holiday"]
   },
 
   "label_rules": [
@@ -110,9 +112,9 @@
     "binding_half_life_weeks": 13,
     "binding_lookback_weeks": 52,
     "binding_min_weeks": 12,
-    "_comment_binding_cycle": "Not every rota is weekly — a four-week orthodontic rota is a settled schedule that a weekly reading rejects outright. The modal pattern is therefore fitted per phase of a cycle up to binding_max_cycle_weeks, each extra phase costing binding_cycle_penalty so that a longer period has to earn its parameters, and a phase with fewer than binding_min_phase_weeks weeks behind it is not fitted at all. Set binding_max_cycle_weeks to 1 for a practice that runs nothing but weekly patterns.",
+    "_comment_binding_cycle": "Not every rota is weekly — a four-week orthodontic rota, or a Friday worked only on alternate weeks, is a settled schedule that a weekly reading rejects outright. The modal pattern is therefore fitted per phase of a cycle up to binding_max_cycle_weeks, each extra phase costing binding_cycle_penalty so that a longer period has to earn its parameters, and a phase with fewer than binding_min_phase_weeks weeks behind it is not fitted at all. Calibrate the penalty against a control group rather than by feel: staff the practice schedules itself should essentially never read as being on a rota, so sweep the value and take the lowest one at which none of them flips. Set binding_max_cycle_weeks to 1 for a practice that runs nothing but weekly patterns.",
     "binding_max_cycle_weeks": 4,
-    "binding_cycle_penalty": 0.05,
+    "binding_cycle_penalty": 0.03,
     "binding_min_phase_weeks": 4
   },
 

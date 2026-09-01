@@ -312,3 +312,84 @@ def test_a_date_type_that_is_not_a_datetime_is_still_grouped_by_week():
 		]
 	)
 	assert score_of(frame)["settledness"] == 1.0
+
+
+# --- leave recorded in the slot the shift would have taken ------------------
+
+
+def agenda(personnel_no: str, days, category: str = "Holiday") -> pd.DataFrame:
+	"""An `annotated`-shaped frame of absence rows, as `excused_days` reads it."""
+	return pd.DataFrame(
+		[{"FK_Behandler": 1, "Datum": day, "category": category} for day in days],
+		columns=["FK_Behandler", "Datum", "category"],
+	)
+
+
+COLUMNS = pd.DataFrame([{"behandler_id": 1, "personnel_no": "P1"}])
+
+
+def leave_on(weeks, weekday: int, personnel_no: str = "P1", category: str = "Holiday"):
+	days = [AS_OF - pd.Timedelta(weeks=i) + pd.Timedelta(days=weekday) for i in weeks]
+	return binding.excused_days(agenda(personnel_no, days, category), COLUMNS)
+
+
+def test_leave_neither_creates_a_pattern_nor_breaks_one():
+	"""The practice records leave where the shift would have been, so a day off
+	sick says nothing about the week rather than saying they did not work it."""
+	away_weeks = range(1, 9)
+	frame = shifts("P1", lambda i: [0, 1, 2] if i in away_weeks else [0, 1, 2, 3])
+	assert score_of(frame)["settledness"] < 0.95
+	excused = leave_on(away_weeks, weekday=3)
+	scored = binding.weekly_settledness(frame, as_of=AS_OF, excused=excused).set_index("personnel_no")
+	assert scored.loc["P1", "settledness"] == 1.0
+	assert scored.loc["P1", "modal_week"] == "MTWT..."
+
+
+def test_a_weekday_only_ever_excused_still_counts_as_worked():
+	"""Someone away every Friday of the measured period has not stopped working
+	Fridays; the weeks that were excused simply do not get a vote."""
+	frame = shifts("P1", lambda i: [0, 1, 4] if i % 2 else [0, 1])
+	excused = leave_on([i for i in range(40) if i % 2 == 0], weekday=4)
+	scored = binding.weekly_settledness(frame, as_of=AS_OF, excused=excused).set_index("personnel_no")
+	assert scored.loc["P1", "modal_week"] == "MT..F.."
+	assert scored.loc["P1", "settledness"] == 1.0
+
+
+def test_a_day_both_worked_and_marked_absent_counts_as_worked():
+	"""A shift is the stronger evidence; an excused day is one with nothing on it."""
+	frame = shifts("P1", lambda i: [0, 1, 2])
+	excused = leave_on(range(40), weekday=2)
+	scored = binding.weekly_settledness(frame, as_of=AS_OF, excused=excused).set_index("personnel_no")
+	assert scored.loc["P1", "modal_week"] == "MTW...."
+
+
+def test_only_the_profiles_own_categories_are_excused():
+	"""Keyed on the agenda category, never on the label: the generic "away"
+	banner covers whole stretches of calendar and excusing it would blank out
+	most of the week."""
+	frame = shifts("P1", lambda i: [0, 1, 2] if i < 8 else [0, 1, 2, 3])
+	assert binding.excused_days(agenda("P1", [AS_OF], "Absent"), COLUMNS).empty
+	assert not binding.excused_days(agenda("P1", [AS_OF], "Holiday"), COLUMNS).empty
+	assert (
+		score_of(frame)["settledness"]
+		== binding.weekly_settledness(
+			frame, as_of=AS_OF, excused=binding.excused_days(agenda("P1", [AS_OF], "Absent"), COLUMNS)
+		)
+		.set_index("personnel_no")
+		.loc["P1", "settledness"]
+	)
+
+
+def test_a_profile_that_excuses_nothing_behaves_as_before():
+	object.__setattr__(settings.get(), "excused_categories", ())
+	assert binding.excused_days(agenda("P1", [AS_OF], "Holiday"), COLUMNS).empty
+
+
+def test_an_alternating_friday_is_found_as_a_fortnightly_rota():
+	"""The practice's own chart has VENDREDI SEM. PAIRE / IMPAIRE — a Friday
+	worked on alternate weeks is a settled fortnight, not an unreliable week."""
+	frame = shifts("P1", lambda i: [0, 1, 2, 3, 4] if i % 2 else [0, 1, 2, 3], weeks=48)
+	row = score_of(frame)
+	assert row["cycle_weeks"] == 2
+	assert row["settledness"] == 1.0
+	assert set(row["modal_week"].split("/")) == {"MTWTF..", "MTWT..."}

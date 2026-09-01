@@ -19,10 +19,12 @@ autoshift owns the scheduling fields this import writes (`Employee.custom_fte`,
 without it those values have nowhere to land. The reverse is not true — autoshift is a
 general-purpose optimiser and knows nothing about ZaWin.
 
-This app adds two Custom Fields of its own: `Shift Assignment.custom_zawin_key`, the
-import's idempotency key, and `Employee.custom_initials`, carrying `BEHANDLER.Initialen`
-— the short code a practice actually calls someone by on a paper roster. Anyone with no
-agenda column has none, so the field stays editable.
+This app adds three Custom Fields of its own: `Shift Assignment.custom_zawin_key`,
+the import's idempotency key; the same field on `Shift Schedule Assignment`, which
+identifies the settled weekly pattern a schedule was built from; and
+`Employee.custom_initials`, carrying `BEHANDLER.Initialen` — the short code a practice
+actually calls someone by on a paper roster. Anyone with no agenda column has none, so
+that field stays editable.
 
 ### Tests
 
@@ -165,15 +167,38 @@ usual week, over a recency-weighted year — 1.0 is the same days every week.
 Weeks they worked nothing are dropped rather than scored, because a fortnight's
 holiday would otherwise read exactly like an unstable schedule.
 
+Leave inside a week they did work is handled too, and it matters more than it
+sounds. This practice records booked leave and sick days **in the slot the shift
+would otherwise have occupied**, which makes them evidence about someone's
+pattern rather than against it: a week with Thursday marked as holiday says
+nothing about Thursday. Those days are therefore excused from both the vote that
+decides the usual week and the comparison against it. The distinction is by
+agenda *category*, never by the free-text label — the two booked categories here
+land on a weekday the person never works 0.2% and 0.0% of the time, while the
+generic "away" category does so 8.3% of the time and can carry over a thousand
+full-day rows for one person. That one is a background banner, and excusing it
+would blank out most of the calendar. Which categories are which is
+`categories.excused` in the profile.
+
+On this practice's data, excusing leave moved holdout agreement in the top score
+band from 0.88 to 0.92 (and its floor from 0.60 to 0.75) at unchanged
+correlation, and moved two more people over the settled threshold.
+
 A week is not the only cycle a practice runs, and assuming it was got this
 badly wrong first time: this practice's orthodontists are on rotas longer than a
 week — one works four days, then three, then two weeks off — and a weekly
 reading rejected all five as unsettled when theirs are among the most regular
-schedules in the building. So the pattern is fitted per phase of a cycle up to
+schedules in the building. The commonest case is smaller, and comes straight off
+the practice's wall chart, which has a "Friday, odd week / Friday, even week"
+column. So the pattern is fitted per phase of a cycle up to
 `binding_max_cycle_weeks`, each extra phase priced at `binding_cycle_penalty` so
-a longer period has to earn its parameters. On this practice's data that price
-is doing real work: five of the thirty-odd eligible staff come back as a rota,
-and none of the forty-odd ineligible ones do.
+a longer period has to earn its parameters.
+
+Price that penalty against a **control group** rather than by feel: staff the
+practice schedules itself should essentially never read as being on a rota, so
+they measure the false-positive rate directly. Sweeping it here, 0.03 is the
+lowest value at which none of the thirty-five controls flips, and it finds seven
+of the thirty-two self-scheduling staff; by 0.025 the first control goes.
 
 The score distribution is continuous — there is no natural break to read a
 threshold off — so `binding_settled_min` is a judgement. Calibrate it:
@@ -185,6 +210,48 @@ zawin binding --eligible-only  # just the services marked binding
 
 Each build re-runs the check and writes `data/derived/binding_review.csv`
 saying where everyone landed and why.
+
+### Handing a settled week back to HR
+
+Once a week is known to repeat, it stops being several hundred rows and becomes
+a *rule* — and stock HR already has somewhere to put a rule. Each bound
+practitioner gets a `Shift Schedule` (a shift type, a frequency, the weekdays it
+falls on) and a `Shift Schedule Assignment` joining it to them; HRMS's own
+nightly job creates the `Shift Assignment` records from there. An administrator
+reviews one rule instead of auditing a year of rows.
+
+A `Shift Schedule` names exactly one shift type, so someone working mornings on
+Monday and afternoons on Thursday gets two — a fair description of the practice
+rather than a workaround. Schedules are named after their own content, so
+everyone on the same pattern shares one record.
+
+Everything is emitted **disabled** (`enabled = 0`). Nothing is generated until
+somebody approves it, and `create_shifts_after` is set to the build's own
+`date_to` so the import owns history and the schedule owns the future. They have
+to meet exactly rather than overlap: HRMS throws on an active assignment that
+collides with an existing one.
+
+#### Only weekly schedules can actually be run
+
+`Every N Weeks` is **not** an N-week rota. It repeats *the same* weekday set,
+working one week in every N — there is no way to say "week one is Monday to
+Wednesday, week two is Thursday and Friday".
+
+It is also unsound for N > 1. `create_shifts` takes its week boundary from
+`create_shifts_after`, and `create_individual_assignment` overwrites that with
+the last *shift's* end date rather than the end of a week. One long call is
+correct; the nightly job resumes mid-pattern, the boundary re-anchors, and the
+cycle collapses. Measured against hrms 16.8.0 over twelve weeks in thirty-day
+chunks, `Every 4 Weeks` produced weeks 0, 4, 4, 5, 8, 9, 10, 11, 12 — weekly by
+the third month. `Every Week` is immune: `gap` is 0 and the branch that moves
+the boundary never runs.
+
+So a rota is still emitted — it is real, and someone should be able to see it —
+but as `Inactive`, `enabled = 0`, tagged **DO NOT ENABLE**, and carrying a
+comment saying why. One assignment per phase, anchored a week apart, is the
+faithful shape and would work as-is the day `create_shifts` anchors its weeks
+properly. Until then those people keep their imported `Shift Assignment` rows,
+which describe them correctly. The build names them in its warnings.
 
 ### Curated overrides
 

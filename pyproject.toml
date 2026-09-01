@@ -18,6 +18,12 @@ dependencies = [
 requires = ["flit_core >=3.4,<4"]
 build-backend = "flit_core.buildapi"
 
+# `uv run pytest tests/`. The suite needs no site and no ZaWin, so it does not
+# belong in bench's dev-dependencies below: those are installed into the bench
+# environment, and this runs standalone.
+[dependency-groups]
+dev = ["pytest>=8"]
+
 # These dependencies are only installed when developer mode is enabled
 [tool.bench.dev-dependencies]
 # package_name = "~=1.1.0"

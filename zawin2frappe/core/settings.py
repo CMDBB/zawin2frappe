@@ -76,6 +76,12 @@ class Profile:
 	admin_service: str | None
 	absence_categories: tuple[str, ...]
 	non_clinical_categories: tuple[str, ...]
+	#: Absence categories recorded *in the slot the shift would have occupied* —
+	#: booked leave and sick days, as against a background "away" banner. They
+	#: are evidence about the person's pattern rather than against it, so
+	#: `pipeline.binding` excuses those days instead of counting them as days
+	#: not worked. Empty leaves the behaviour as if nothing were excused.
+	excused_categories: tuple[str, ...]
 	#: (regex, kind, counts_as_worked), first match wins
 	label_rules: list[tuple[str, str, bool]]
 	#: (regex, discipline), first match wins. Applied to a presence label, this
@@ -245,6 +251,7 @@ def load(path: str | Path | None = None) -> Profile:
 		admin_service=raw.get("admin_service"),
 		absence_categories=tuple(raw.get("categories", {}).get("absence", [])),
 		non_clinical_categories=tuple(raw.get("categories", {}).get("non_clinical", [])),
+		excused_categories=tuple(raw.get("categories", {}).get("excused", [])),
 		label_rules=[tuple(r) for r in raw.get("label_rules", [])],
 		discipline_labels=[tuple(r) for r in raw.get("discipline_labels", [])],
 		default_discipline=raw.get("default_discipline"),
