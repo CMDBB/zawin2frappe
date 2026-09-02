@@ -255,6 +255,65 @@ class FrappeDocSink:
 		plain = str(value).rsplit(" - ", 1)[0]
 		return self._departments.get(plain, value)
 
+	# -- gold standard (hand-edited rotas) ----------------------------------
+
+	def _drop_gold_standard(self, payloads: list[dict], stats: Counter) -> list[dict]:
+		"""Filter out `Shift Schedule Assignment` rows that would land on a pattern a
+		planner already fixed by hand in autoshift's Rota Editor.
+
+		A hand edit is gold standard — it is the planner correcting the record, not a
+		guess — and it is never expressed as a patch on the detected schedule: the
+		editor always replaces the assignment wholesale with a fresh one tagged
+		`custom_manually_edited` (see `Shift Schedule Assignment.custom_manually_edited`).
+		That fresh record carries no `custom_zawin_key`, so the usual upsert-by-key
+		lookup in `write` can never see it, and a re-run that recomputed the same
+		employee/shift_type/branch would just insert a second, competing assignment
+		alongside the hand edit instead of updating anything. Matched on
+		(employee, shift_type, shift_location) rather than key, since that triple is
+		the only vocabulary both sides share.
+		"""
+		manual = frappe.get_all(
+			"Shift Schedule Assignment",
+			filters={"custom_manually_edited": 1},
+			fields=["employee", "shift_schedule", "shift_location"],
+		)
+		if not manual:
+			return payloads
+
+		schedule_names = {r["shift_schedule"] for r in manual if r["shift_schedule"]}
+		schedule_names |= {p.get("shift_schedule") for p in payloads if p.get("shift_schedule")}
+		shift_type_of = (
+			{
+				s["name"]: s["shift_type"]
+				for s in frappe.get_all(
+					"Shift Schedule",
+					filters={"name": ["in", list(schedule_names)]},
+					fields=["name", "shift_type"],
+				)
+			}
+			if schedule_names
+			else {}
+		)
+		gold = {(r["employee"], shift_type_of.get(r["shift_schedule"]), r["shift_location"]) for r in manual}
+
+		kept = []
+		for payload in payloads:
+			pattern = (
+				payload.get("employee"),
+				shift_type_of.get(payload.get("shift_schedule")),
+				payload.get("shift_location"),
+			)
+			if pattern in gold:
+				stats["skipped_manual"] += 1
+				log.info(
+					"Shift Schedule Assignment: skipping %s / %s / %s — manually edited in the Rota "
+					"Editor, gold standard, import must not overwrite it",
+					*pattern,
+				)
+				continue
+			kept.append(payload)
+		return kept
+
 	# -- writing -----------------------------------------------------------
 
 	def write(self, doctype: str, rows: pd.DataFrame) -> None:
@@ -267,6 +326,11 @@ class FrappeDocSink:
 			raise ValueError(f"no key field configured for {doctype}")
 
 		payloads = [{c: _clean(v) for c, v in row.items()} for _, row in rows.iterrows()]
+		if doctype == "Shift Schedule Assignment":
+			payloads = self._drop_gold_standard(payloads, stats)
+			if not payloads:
+				log.info("%-20s %s", doctype, dict(stats))
+				return
 		dept_field = DEPARTMENT_FIELD.get(doctype)
 		if dept_field is not None:
 			self._load_departments()

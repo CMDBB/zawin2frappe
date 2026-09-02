@@ -26,6 +26,13 @@ identifies the settled weekly pattern a schedule was built from; and
 actually calls someone by on a paper roster. Anyone with no agenda column has none, so
 that field stays editable.
 
+autoshift, in turn, adds `Shift Schedule Assignment.custom_manually_edited` (and the
+same field on `Shift Schedule`): set by its Rota Editor on any pattern a planner has
+corrected by hand. A hand edit is gold standard, so the import never writes over the
+employee/shift_type/branch a tagged assignment already covers — it skips that row and
+logs the skip (`skipped_manual` in the per-doctype summary) rather than inserting a
+second, competing assignment alongside it.
+
 ### Tests
 
 `tests/` is a pure-Python suite — no ZaWin, no Frappe, no site, no practice
