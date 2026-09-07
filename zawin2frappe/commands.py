@@ -20,6 +20,17 @@ import frappe
 from frappe.commands import get_site, pass_context
 
 
+def _setup_logging(verbose, quiet):
+	"""Configure logging level based on verbosity flags."""
+	if quiet:
+		level = logging.WARNING
+	elif verbose:
+		level = logging.DEBUG
+	else:
+		level = logging.INFO
+	logging.basicConfig(level=level)
+
+
 @click.command("zawin-build")
 @click.option(
 	"--target", type=click.Choice(["employees", "assignments", "all"]), default="all", show_default=True
@@ -39,10 +50,12 @@ from frappe.commands import get_site, pass_context
 	help="'single' emits at most one shift per person per day.",
 )
 @click.option("--dry-run", is_flag=True, help="Build and report, writing nothing.")
+@click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
+@click.option("-q", "--quiet", is_flag=True, help="Suppress non-error logging.")
 @pass_context
-def zawin_build(context, target, out, date_from, date_to, signal_from, signal_to, full_day_policy, dry_run):
+def zawin_build(context, target, out, date_from, date_to, signal_from, signal_to, full_day_policy, dry_run, verbose, quiet):
 	"""Extract ZaWin agenda data and load it into Frappe HR."""
-	logging.basicConfig(level=logging.DEBUG)
+	_setup_logging(verbose, quiet)
 	site = get_site(context)
 	frappe.init(site=site)
 	frappe.connect()
@@ -109,9 +122,12 @@ def zawin_build(context, target, out, date_from, date_to, signal_from, signal_to
 
 
 @click.command("zawin-profile")
+@click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
+@click.option("-q", "--quiet", is_flag=True, help="Suppress non-error logging.")
 @pass_context
-def zawin_profile(context):
+def zawin_profile(context, verbose, quiet):
 	"""Show the practice profile this site resolves to."""
+	_setup_logging(verbose, quiet)
 	site = get_site(context)
 	frappe.init(site=site)
 	frappe.connect()
@@ -161,9 +177,12 @@ class _NullSink:
 
 
 @click.command("zawin-bootstrap")
+@click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
+@click.option("-q", "--quiet", is_flag=True, help="Suppress non-error logging.")
 @pass_context
-def zawin_bootstrap(context):
+def zawin_bootstrap(context, verbose, quiet):
 	"""Create the Company, Genders, Departments and Shift Types the import links to."""
+	_setup_logging(verbose, quiet)
 	site = get_site(context)
 	frappe.init(site=site)
 	frappe.connect()
