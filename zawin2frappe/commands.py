@@ -11,9 +11,9 @@ command works across sites without arguments:
 """
 
 from __future__ import annotations
-import logging
 
 import json
+import logging
 
 import click
 import frappe
@@ -53,7 +53,9 @@ def _setup_logging(verbose, quiet):
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
 @click.option("-q", "--quiet", is_flag=True, help="Suppress non-error logging.")
 @pass_context
-def zawin_build(context, target, out, date_from, date_to, signal_from, signal_to, full_day_policy, dry_run, verbose, quiet):
+def zawin_build(
+	context, target, out, date_from, date_to, signal_from, signal_to, full_day_policy, dry_run, verbose, quiet
+):
 	"""Extract ZaWin agenda data and load it into Frappe HR."""
 	_setup_logging(verbose, quiet)
 	site = get_site(context)

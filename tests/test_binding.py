@@ -26,9 +26,9 @@ from zawin2frappe.core.pipeline import binding
 AS_OF = pd.Timestamp("2026-06-29")
 EXAMPLE_PROFILE = Path(__file__).resolve().parents[1] / "profiles" / "example.json"
 
-#: example.json marks these binding; 120 (hygienist) and 200 (assistant) not.
+#: Binding is the default; example.json opts only 900 (administration) out.
 BINDING_SERVICE = "100"
-PLAIN_SERVICE = "200"
+PLAIN_SERVICE = "900"
 
 
 @pytest.fixture(autouse=True)
@@ -289,6 +289,13 @@ def test_the_shipped_example_profile_documents_every_threshold_used():
 
 def test_the_example_profile_marks_at_least_one_service_binding():
 	assert binding.binding_services()
+
+
+def test_a_service_that_says_nothing_about_binding_binds():
+	"""A fixed week is the norm, so a profile lists the exceptions, not the rule."""
+	assert settings.get().service("200").assignments_binding
+	assert "200" in binding.binding_services()
+	assert PLAIN_SERVICE not in binding.binding_services()
 
 
 def test_dates_are_read_whether_they_arrive_as_dates_or_timestamps():

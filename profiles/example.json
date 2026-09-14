@@ -31,13 +31,13 @@
 
   "services": {
     "_comment": "Payroll service code -> role and discipline. 'discipline: null' means the code is ambiguous and must be refined from ZaWin (e.g. an assistant pool spanning several disciplines). Set it where the pool should stay together whatever the agenda says — apprentices, for instance, are a department of their own so they do not count as capacity in a clinical one. 'clinical' marks staff who work chairside. 'graduates_to' marks an apprenticeship and names the service its apprentices become: accounting is not always prompt about retiring the filing, so a finished apprentice is re-filed under it from the agenda (see pipeline/apprenticeship.py).",
-    "_comment_assignments_binding": "'assignments_binding' marks a service whose holders decide their own working week, so the practice schedules everyone else around them. The Scheduling Roles built from it are emitted with autoshift's assignments_binding flag, and a bound holder then keeps exactly the Shift Assignments already on the books — the optimiser may not add, move or drop any of them. Which jobs have that pull is a fact about one practice's power structure and nothing here infers it; default false. pipeline/binding.py then measures, per holder, whether their week has actually settled, and writes 'Not Binding' on anyone it has not, so a recent hire is never frozen to a pattern they do not have yet. Calibrate the threshold with: zawin binding",
-    "100": { "designation": "Dentist", "discipline": "Omnipractice", "clinical": true, "assignments_binding": true },
-    "110": { "designation": "Orthodontist", "discipline": "Orthodontics", "clinical": true, "assignments_binding": true },
+    "_comment_assignments_binding": "'assignments_binding' says whether holders of a service work a fixed week the plan has to fit around. Default true, because that turns out to be most staff: set it false only for a job the practice genuinely plans from scratch. The Scheduling Roles built from a binding service are emitted with autoshift's assignments_binding flag, and a bound holder then keeps the Shift Assignments already on the books. Colour-rule roles take the same key on the rule, and the prophylaxis role takes zawin.prophylaxis_assignments_binding; both default true. The weeks this import detects are emitted unconfirmed (silver standard) for a planner to confirm in autoshift's Rota Editor, since the agenda is evidence of someone's week, not a contract. pipeline/binding.py then measures, per holder, whether their week has actually settled, and writes 'Not Binding' on anyone it has not, so a recent hire is never frozen to a pattern they do not have yet. Calibrate the threshold with: zawin binding",
+    "100": { "designation": "Dentist", "discipline": "Omnipractice", "clinical": true },
+    "110": { "designation": "Orthodontist", "discipline": "Orthodontics", "clinical": true },
     "120": { "designation": "Dental hygienist", "discipline": "Dental Hygiene", "clinical": true },
     "200": { "designation": "Dental assistant", "discipline": null, "clinical": true },
     "250": { "designation": "Apprentice", "discipline": "Apprenticeship", "clinical": true, "graduates_to": "200" },
-    "900": { "designation": "Administration", "discipline": "Administration", "clinical": false }
+    "900": { "designation": "Administration", "discipline": "Administration", "clinical": false, "assignments_binding": false }
   },
 
   "admin_service": "900",

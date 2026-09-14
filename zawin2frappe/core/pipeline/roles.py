@@ -29,9 +29,11 @@ Secondary roles are always emitted as `Scheduling Role`s when configured, even
 before anyone qualifies for them — same as Branch or Shift Type, they are
 config, not data.
 
-A role also carries whether its holders set their own working week
-(`assignments_binding`), which comes from the service the role was built from
-or from the colour rule that granted it. `pipeline.binding` then decides, per
+A role also carries whether its holders work a fixed week
+(`assignments_binding`), which comes from the service the role was built from,
+the colour rule that granted it, or `zawin.prophylaxis_assignments_binding` for
+the prophylaxis role. All three default to binding and are opted out in the
+profile. `pipeline.binding` then decides, per
 holder, whether that person's week has actually settled enough to be frozen;
 see its docstring for the split between the two.
 """
@@ -42,7 +44,7 @@ import pandas as pd
 
 from .. import extract, settings
 from ..roster import funktion_prophylaxis
-from .binding import OVERRIDE_INHERIT
+from .binding import OVERRIDE_INHERIT, OVERRIDE_NOT_BINDING
 from .employees import department_link
 
 #: Rooms one holder covers, absent an explicit override in the rule.
@@ -76,10 +78,11 @@ def _role_namer(spine: pd.DataFrame) -> tuple[pd.Series, dict]:
 
 
 def _binding_roles(spine: pd.DataFrame) -> set[str]:
-	"""Role names whose holders set their own week, from the profile.
+	"""Role names whose holders work a fixed week, from the profile.
 
-	A role is binding if any service that produces it is marked
-	`assignments_binding`. In practice a role is built from exactly one service
+	Binding unless opted out: a role is binding if any service that produces it
+	leaves `assignments_binding` on (its default), and so is a colour-rule or
+	prophylaxis role unless its own profile entry turns it off. In practice a role is built from exactly one service
 	— the designation comes from it — so "any" only matters for the pathological
 	case of two services sharing a designation *and* a discipline, where erring
 	towards binding leaves the decision to `pipeline.binding` per person rather
@@ -97,8 +100,10 @@ def _binding_roles(spine: pd.DataFrame) -> set[str]:
 	out |= {
 		rule["role"]
 		for rule in prof.role_color_rules.values()
-		if rule.get("role") and rule.get("assignments_binding")
+		if rule.get("role") and rule.get("assignments_binding", True)
 	}
+	if funktion_prophylaxis() is not None and prof.zawin.get("prophylaxis_assignments_binding", True):
+		out.add(PROPHYLAXIS_ROLE)
 	return out
 
 
@@ -174,6 +179,10 @@ def build_employee_scheduling_roles(
 	only onto rows whose role is actually binding: elsewhere the role carries no
 	flag to override, and a stray "Not Binding" would read as a decision about
 	someone it was never made about.
+
+	A binding secondary role held by someone whose own service is opted out gets
+	"Not Binding": `resolve` never measured their week, and inheriting the role's
+	flag would freeze them to it unchecked.
 	"""
 	prof = settings.get()
 	schedulable = spine[spine["schedulable"]].copy()
@@ -221,13 +230,19 @@ def build_employee_scheduling_roles(
 	out["active"] = 1
 
 	binding_roles = _binding_roles(schedulable)
-	decision = (
-		binding.set_index("personnel_no")["binding_override"]
-		if binding is not None and not binding.empty
-		else pd.Series(dtype=object)
-	)
+	measured = binding is not None and not binding.empty
+	decision = binding.set_index("personnel_no")["binding_override"] if measured else pd.Series(dtype=object)
+	eligible = set(binding.loc[binding["eligible"].astype(bool), "personnel_no"]) if measured else set()
+
+	def override(employee, role) -> str:
+		if role not in binding_roles:
+			return OVERRIDE_INHERIT
+		if measured and employee not in eligible:
+			return OVERRIDE_NOT_BINDING
+		return decision.get(employee, OVERRIDE_INHERIT)
+
 	out["binding_override"] = [
-		decision.get(employee, OVERRIDE_INHERIT) if role in binding_roles else OVERRIDE_INHERIT
+		override(employee, role)
 		for employee, role in zip(out["employee"], out["scheduling_role"], strict=False)
 	]
 	return out.sort_values(["employee", "scheduling_role"]).reset_index(drop=True)

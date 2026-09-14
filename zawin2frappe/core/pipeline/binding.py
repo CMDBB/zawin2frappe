@@ -1,18 +1,22 @@
 """Whose schedule is settled, and settled enough to be treated as binding.
 
-At some practices a group of staff — practitioners, usually — decide their own
-working week, and the practice schedules everyone else around them. autoshift
-models that as `Scheduling Role.assignments_binding`: a bound holder keeps
-exactly the Shift Assignments already on the books and the optimiser may not
-add, move or drop any of them (see autoshift's "Role binding" notes).
+Most staff at a practice work a fixed week, and the plan has to fit around it.
+This was first built for practitioners alone, on the theory that only they set
+their own hours. It turned out that nearly everyone has a fixed schedule, so
+binding is now the default and a profile opts jobs *out*. autoshift models a
+fixed week as `Scheduling Role.assignments_binding`: a bound holder keeps the
+Shift Assignments already on the books (see autoshift's "Role binding" notes).
+
+What the agenda says someone's week is, is evidence rather than a contract: the
+agenda is the closest thing to reality, but it is not legally binding. So every
+pattern `pipeline.schedules` emits from it arrives *unconfirmed* (silver
+standard), for a planner to confirm or correct in autoshift's Rota Editor.
 
 Two separate questions, answered from two separate places:
 
-  *which jobs may bind*   Who has that pull is a fact about one practice's
-                          power structure, so it is profile data: a service
-                          marked `assignments_binding` makes the Scheduling
-                          Roles built from it binding. Nothing here knows or
-                          guesses which jobs those are.
+  *which jobs may bind*   Profile data: every service binds unless it says
+                          `assignments_binding: false`. Nothing here guesses
+                          which jobs are exceptions.
   *whose week has settled* An eligible person whose week is not actually
                           regular yet — a recent hire, someone mid-change —
                           must not be frozen to a pattern that does not exist.
@@ -135,12 +139,14 @@ DEFAULT_MAX_CYCLE_WEEKS = 4
 #: period always fits at least as well — it has more parameters — so without a
 #: price every schedule reads as a four-week rota.
 #:
-#: Calibrated against a control group rather than by feel: staff the practice
-#: schedules itself should essentially never read as being on a rota, so they
-#: measure the false-positive rate directly. On this practice's year, 0.03 is
-#: the lowest value at which none of the thirty-five controls flips while
-#: seven of the thirty-two self-scheduling staff do; at 0.025 the first control
-#: goes. Redo that sweep on your own data before moving it.
+#: Calibrated against a control group rather than by feel: staff known to work
+#: a plain weekly pattern should essentially never read as being on a rota, so
+#: they measure the false-positive rate directly. 0.03 came from a sweep that
+#: took the staff then believed to be practice-scheduled as that control group,
+#: where it was the lowest value at which none of them flipped. That premise has
+#: since gone (most staff turned out to work a fixed week of their own), so
+#: pick a control group of people you *know* are weekly and redo the sweep before
+#: trusting or moving it.
 DEFAULT_CYCLE_PENALTY = 0.03
 
 #: Weeks a phase needs before it is fitted at all. Below this the "pattern" is
@@ -170,10 +176,11 @@ def _threshold(key: str, default: float) -> float:
 
 
 def binding_services() -> set[str]:
-	"""Service codes whose holders set their own schedules.
+	"""Service codes whose holders work a fixed week.
 
-	Empty unless the profile says otherwise, which is the whole feature off:
-	no role is emitted binding and no override is ever written.
+	Every service the profile lists, less the ones it opts out. Empty only when
+	the profile opts all of them out, which is the whole feature off: no role is
+	emitted binding and no override is ever written.
 	"""
 	return {code for code, s in settings.get().services.items() if s.assignments_binding}
 
@@ -181,7 +188,7 @@ def binding_services() -> set[str]:
 def load_overrides(path: Path | None = None) -> pd.DataFrame:
 	"""Binding decisions a human has made by hand.
 
-	The score is evidence, not a verdict. A practitioner who has just changed
+	The score is evidence, not a verdict. Someone who has just changed
 	their week reads as unsettled for a quarter afterwards even though everyone
 	in the building knows the new week is final, and the reverse happens too.
 	Empty unless the active profile ships the file.

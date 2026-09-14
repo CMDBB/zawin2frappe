@@ -255,30 +255,35 @@ class FrappeDocSink:
 		plain = str(value).rsplit(" - ", 1)[0]
 		return self._departments.get(plain, value)
 
-	# -- gold standard (hand-edited rotas) ----------------------------------
+	# -- gold standard (confirmed rotas) ------------------------------------
 
 	def _drop_gold_standard(self, payloads: list[dict], stats: Counter) -> list[dict]:
-		"""Filter out `Shift Schedule Assignment` rows that would land on a pattern a
-		planner already fixed by hand in autoshift's Rota Editor.
+		"""Filter out `Shift Schedule Assignment` rows that would land on a pattern
+		somebody has confirmed.
 
-		A hand edit is gold standard — it is the planner correcting the record, not a
-		guess — and it is never expressed as a patch on the detected schedule: the
-		editor always replaces the assignment wholesale with a fresh one tagged
-		`custom_manually_edited` (see `Shift Schedule Assignment.custom_manually_edited`).
-		That fresh record carries no `custom_zawin_key`, so the usual upsert-by-key
-		lookup in `write` can never see it, and a re-run that recomputed the same
-		employee/shift_type/branch would just insert a second, competing assignment
-		alongside the hand edit instead of updating anything. Matched on
-		(employee, shift_type, shift_location) rather than key, since that triple is
-		the only vocabulary both sides share.
+		Everything this import writes is silver standard — the agenda is the best
+		evidence of a person's week, not a legally binding record of it — and says so
+		with autoshift's `custom_unconfirmed = 1`. Any assignment without the flag is
+		gold: a planner edited it or pressed Promote in the Rota Editor, or HR entered
+		it in the Desk. The import never overwrites one.
+
+		Two ways a gold row can meet a payload, and both are checked:
+
+		  by key      a promoted assignment keeps its `custom_zawin_key`, so the
+		              upsert would find it and flip it back to unconfirmed.
+		  by pattern  an edited or hand-entered assignment has no key at all, so
+		              the upsert cannot see it and would insert a second, competing
+		              assignment next to it. Matched on (employee, shift_type,
+		              shift_location), the only vocabulary both sides share.
 		"""
 		manual = frappe.get_all(
 			"Shift Schedule Assignment",
-			filters={"custom_manually_edited": 1},
-			fields=["employee", "shift_schedule", "shift_location"],
+			filters={"custom_unconfirmed": 0},
+			fields=["employee", "shift_schedule", "shift_location", "custom_zawin_key"],
 		)
 		if not manual:
 			return payloads
+		confirmed_keys = {r["custom_zawin_key"] for r in manual if r["custom_zawin_key"]}
 
 		schedule_names = {r["shift_schedule"] for r in manual if r["shift_schedule"]}
 		schedule_names |= {p.get("shift_schedule") for p in payloads if p.get("shift_schedule")}
@@ -303,11 +308,11 @@ class FrappeDocSink:
 				shift_type_of.get(payload.get("shift_schedule")),
 				payload.get("shift_location"),
 			)
-			if pattern in gold:
-				stats["skipped_manual"] += 1
+			if pattern in gold or payload.get("custom_zawin_key") in confirmed_keys:
+				stats["skipped_confirmed"] += 1
 				log.info(
-					"Shift Schedule Assignment: skipping %s / %s / %s — manually edited in the Rota "
-					"Editor, gold standard, import must not overwrite it",
+					"Shift Schedule Assignment: skipping %s / %s / %s — already confirmed (gold "
+					"standard), import must not overwrite it",
 					*pattern,
 				)
 				continue
@@ -342,7 +347,7 @@ class FrappeDocSink:
 		if missing_key:
 			raise ValueError(f"{missing_key} {doctype} rows have no {key_field}")
 
-		log.debug(f'trying {doctype} write with {key_field=}')
+		log.debug(f"trying {doctype} write with {key_field=}")
 		# Child tables are not columns and annotations are not fields, so neither
 		# can be read back for comparison.
 		skip = set(TABLE_FIELDS.get(doctype, {})) | set(ANNOTATIONS)

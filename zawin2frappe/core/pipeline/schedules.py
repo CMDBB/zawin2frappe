@@ -1,14 +1,21 @@
 """A settled week, expressed as HRMS's own Shift Schedule rather than as rows.
 
-Once `pipeline.binding` knows a practitioner's week repeats, that week is a
+Once `pipeline.binding` knows someone's week repeats, that week is a
 *rule*, and stock HR already has somewhere to put a rule: a `Shift Schedule`
 (a shift type, a frequency, and the weekdays it falls on) plus a
 `Shift Schedule Assignment` joining it to an employee. HRMS's nightly job then
 creates the `Shift Assignment` records from it, and an administrator can review
 the rule once instead of auditing several hundred generated rows.
 
+Every assignment is emitted **unconfirmed** (`custom_unconfirmed = 1`,
+autoshift's silver-standard flag). The agenda is the best evidence of someone's
+week, but not a legally binding record of it, and the flag is also what lets a
+re-import update the row: the loader never overwrites an unflagged one, since
+that is a pattern a planner confirmed or entered by hand (see
+`loaders.frappe_sink`).
+
 Two shift types means two schedules. A `Shift Schedule` names exactly one
-`shift_type`, so a practitioner working mornings on Monday and afternoons on
+`shift_type`, so someone working mornings on Monday and afternoons on
 Thursday needs one schedule for each — which is a fair description of the
 practice rather than a workaround.
 
@@ -125,7 +132,7 @@ def build(
 	create_shifts_after=None,
 	excused=None,
 ) -> dict[str, pd.DataFrame]:
-	"""Shift Schedule and Shift Schedule Assignment rows for bound practitioners.
+	"""Shift Schedule and Shift Schedule Assignment rows for bound staff.
 
 	`resolved` is `pipeline.binding.resolve`'s verdict. Only people it leaves
 	binding get a schedule: someone it held back has no settled week to express,
@@ -143,6 +150,7 @@ def build(
 				"shift_status",
 				"enabled",
 				"create_shifts_after",
+				"custom_unconfirmed",
 				"zawin_tag",
 				"zawin_comment",
 			]
@@ -216,6 +224,7 @@ def build(
 				"shift_status": "Active" if usable else "Inactive",
 				"enabled": 0,
 				"create_shifts_after": _anchor(create_shifts_after, cycle, phase),
+				"custom_unconfirmed": 1,
 				"zawin_tag": "" if usable else TAG_DO_NOT_ENABLE,
 				"zawin_comment": "" if usable else REASON_ROTA.format(cycle=cycle, phase=phase + 1),
 			}

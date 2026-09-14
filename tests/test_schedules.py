@@ -22,7 +22,7 @@ AS_OF = pd.Timestamp("2026-06-29")  # a Monday
 EXAMPLE_PROFILE = Path(__file__).resolve().parents[1] / "profiles" / "example.json"
 
 BINDING_SERVICE = "100"
-PLAIN_SERVICE = "200"
+PLAIN_SERVICE = "900"  # the one service example.json opts out of binding
 
 
 @pytest.fixture(autouse=True)
@@ -89,6 +89,15 @@ def test_everything_is_emitted_disabled_for_review():
 	frame = worked("P1", lambda i: [(0, "am"), (1, "am")])
 	assignments = emit(frame, {"P1": (BINDING_SERVICE, "Omnipractice")})["Shift Schedule Assignment"]
 	assert (assignments["enabled"] == 0).all()
+
+
+def test_every_imported_pattern_arrives_unconfirmed():
+	"""The agenda is evidence of a week, not a contract: a planner confirms it in
+	autoshift's Rota Editor, and until then a re-import may still update it."""
+	frame = worked("P1", lambda i: [(0, "am"), (3, "pm")])
+	assignments = emit(frame, {"P1": (BINDING_SERVICE, "Omnipractice")})["Shift Schedule Assignment"]
+	assert not assignments.empty
+	assert (assignments["custom_unconfirmed"] == 1).all()
 
 
 def test_the_schedule_takes_over_where_the_import_stops():

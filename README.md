@@ -26,12 +26,17 @@ identifies the settled weekly pattern a schedule was built from; and
 actually calls someone by on a paper roster. Anyone with no agenda column has none, so
 that field stays editable.
 
-autoshift, in turn, adds `Shift Schedule Assignment.custom_manually_edited` (and the
-same field on `Shift Schedule`): set by its Rota Editor on any pattern a planner has
-corrected by hand. A hand edit is gold standard, so the import never writes over the
-employee/shift_type/branch a tagged assignment already covers — it skips that row and
-logs the skip (`skipped_manual` in the per-doctype summary) rather than inserting a
-second, competing assignment alongside it.
+autoshift, in turn, adds `Shift Schedule Assignment.custom_unconfirmed`, and this
+import sets it on every pattern it writes. The agenda is the best evidence of
+someone's week, but it is not a legally binding record of it, so an imported pattern
+is **silver standard** until a planner confirms it in autoshift's Rota Editor, either
+by editing it or with *Promote all*. An assignment without the flag is gold standard
+(confirmed there, or entered by hand in the Desk), and the import never writes over
+one. It skips any row whose key or employee/shift_type/branch a confirmed assignment
+already covers, logs the skip (`skipped_confirmed` in the per-doctype summary), and
+doesn't insert a second, competing assignment alongside it. The
+`mark_imported_rotas_unconfirmed` patch flags the rows imported before the flag
+existed.
 
 ### Tests
 
@@ -149,22 +154,25 @@ pool. Leave `graduates_to` unset and nothing happens: accounting's filing
 stands, as it does for any apprentice whose agenda records no school days at
 all.
 
-### Schedules the practice does not set
+### Fixed schedules
 
-At some practices a group of staff decide their own working week and everyone
-else is scheduled around them. autoshift models that as
-`Scheduling Role.assignments_binding`: a bound holder keeps exactly the Shift
-Assignments already on the books, and the optimiser may not add, move or drop
-any of them.
+Most staff work a fixed week, and the plan has to fit around it. This was first
+built for practitioners alone, on the theory that only they set their own hours,
+but in practice nearly everyone has a fixed schedule. autoshift models a fixed
+week as `Scheduling Role.assignments_binding`: a bound holder keeps the Shift
+Assignments already on the books.
 
 Two separate questions, answered from two separate places.
 
-**Which jobs may bind** is a fact about one practice's power structure, so it is
-profile data — `"assignments_binding": true` on a service — and nothing here
-infers it. Default false, which is the whole feature off.
+**Which jobs may bind** is profile data, and binding is the **default**: a
+service binds unless it says `"assignments_binding": false`, and so do
+colour-rule roles and the prophylaxis role
+(`zawin.prophylaxis_assignments_binding`). Opt out a job the practice genuinely
+plans from scratch. A binding secondary role held by someone whose own service
+is opted out is written `Not Binding`, because nobody measured their week.
 
 **Whose week has actually settled** is a measurement, and it can only ever take
-binding away again. A practitioner who has just arrived, or is mid-change, must
+binding away again. Someone who has just arrived, or is mid-change, must
 not be frozen to a pattern that does not exist yet, so they get
 `Employee Scheduling Role.binding_override = "Not Binding"` and are scheduled
 normally. Nobody is ever marked binding whom the profile did not.
@@ -201,11 +209,13 @@ column. So the pattern is fitted per phase of a cycle up to
 `binding_max_cycle_weeks`, each extra phase priced at `binding_cycle_penalty` so
 a longer period has to earn its parameters.
 
-Price that penalty against a **control group** rather than by feel: staff the
-practice schedules itself should essentially never read as being on a rota, so
-they measure the false-positive rate directly. Sweeping it here, 0.03 is the
-lowest value at which none of the thirty-five controls flips, and it finds seven
-of the thirty-two self-scheduling staff; by 0.025 the first control goes.
+Price that penalty against a **control group** rather than by feel: staff known
+to work a plain weekly pattern should essentially never read as being on a rota,
+so they measure the false-positive rate directly. The shipped 0.03 came from a
+sweep that used the staff then believed to be practice-scheduled as controls: it
+was the lowest value at which none of the thirty-five flipped. That premise no
+longer holds, since most of them turned out to work a fixed week of their own,
+so pick controls you *know* are weekly before trusting the value.
 
 The score distribution is continuous — there is no natural break to read a
 threshold off — so `binding_settled_min` is a judgement. Calibrate it:
@@ -222,7 +232,7 @@ saying where everyone landed and why.
 
 Once a week is known to repeat, it stops being several hundred rows and becomes
 a *rule* — and stock HR already has somewhere to put a rule. Each bound
-practitioner gets a `Shift Schedule` (a shift type, a frequency, the weekdays it
+person gets a `Shift Schedule` (a shift type, a frequency, the weekdays it
 falls on) and a `Shift Schedule Assignment` joining it to them; HRMS's own
 nightly job creates the `Shift Assignment` records from there. An administrator
 reviews one rule instead of auditing a year of rows.
@@ -232,7 +242,8 @@ Monday and afternoons on Thursday gets two — a fair description of the practic
 rather than a workaround. Schedules are named after their own content, so
 everyone on the same pattern shares one record.
 
-Everything is emitted **disabled** (`enabled = 0`). Nothing is generated until
+Everything is emitted **disabled** (`enabled = 0`) and **unconfirmed**
+(`custom_unconfirmed = 1`, see above). Nothing is generated until
 somebody approves it, and `create_shifts_after` is set to the build's own
 `date_to` so the import owns history and the schedule owns the future. They have
 to meet exactly rather than overlap: HRMS throws on an active assignment that
@@ -263,8 +274,8 @@ which describe them correctly. The build names them in its warnings.
 ### Curated overrides
 
 Some links cannot be inferred — a member of staff recorded under a former
-surname, someone whose real job differs from their payroll filing, or a
-practitioner whose new working week is final even though the agenda is still a
+surname, someone whose real job differs from their payroll filing, or someone
+whose new working week is final even though the agenda is still a
 quarter away from saying so. A profile may point at CSVs of human-confirmed
 corrections via its `overrides` block.
 
