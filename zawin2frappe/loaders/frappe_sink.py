@@ -17,6 +17,13 @@ Re-run semantics, chosen deliberately:
                       left alone. The loader never cancels on absence: an
                       extraction fault must not be able to wipe real
                       assignments.
+  blank values        Never overwrite a stored one — see `core.sinks.policy`. The
+                      extract not knowing something is not the same as it being
+                      empty, and a curated field must survive a re-import.
+
+A submitted document is only cancelled and recreated when the change actually
+demands it; where every changed field is `allow_on_submit`, it is edited in place
+and keeps its name, its links and its comments.
 """
 
 from __future__ import annotations
@@ -29,6 +36,8 @@ from collections import Counter
 
 import frappe
 import pandas as pd
+
+from ..core.sinks.policy import needs_replacement, preserve_existing
 
 log = logging.getLogger(__name__)
 
@@ -173,6 +182,7 @@ class FrappeDocSink:
 		#: department_name -> actual docname, learned while writing Departments
 		self._departments: dict[str, str] = {}
 		self._numeric_cache: dict[str, set[str]] = {}
+		self._on_submit_cache: dict[str, set[str]] = {}
 
 	# -- lookup ------------------------------------------------------------
 
@@ -207,27 +217,32 @@ class FrappeDocSink:
 			}
 		return self._numeric_cache[doctype]
 
-	def _differs(self, doctype: str, current: dict, payload: dict) -> bool:
-		"""Whether the stored row disagrees with what we would write.
+	def _editable_after_submit(self, doctype: str) -> set[str]:
+		if doctype not in self._on_submit_cache:
+			meta = frappe.get_meta(doctype)
+			self._on_submit_cache[doctype] = {f.fieldname for f in meta.fields if f.allow_on_submit}
+		return self._on_submit_cache[doctype]
+
+	def _differing_fields(self, doctype: str, current: dict, payload: dict) -> set[str]:
+		"""Which fields of the stored row disagree with what we would write.
 
 		Only over the fields `_existing` was able to read back: a child table is
 		not a column and an annotation is not a field, so both are absent from
 		`current` and comparing them would report a change on every single run.
 		"""
-		if current is None:
-			return True
 		numeric = self._numeric_fields(doctype)
 		unreadable = set(TABLE_FIELDS.get(doctype, {})) | set(ANNOTATIONS)
+		changed = set()
 		for field, wanted in payload.items():
 			if field in IGNORE_ON_COMPARE or field in unreadable:
 				continue
 			have = current.get(field)
 			if field in numeric:
 				if float(have or 0) != float(wanted or 0):
-					return True
+					changed.add(field)
 			elif _comparable(have).strip() != _comparable(wanted).strip():
-				return True
-		return False
+				changed.add(field)
+		return changed
 
 	# -- link resolution ---------------------------------------------------
 
@@ -368,11 +383,21 @@ class FrappeDocSink:
 				hit = existing.get(key)
 				if hit is None:
 					self._insert(doctype, payload, stats)
-				elif not self._differs(doctype, hit, payload):
+					continue
+				# A blank the extract has nothing to say about must not erase what
+				# somebody put there (see `core.sinks.policy`) — applied before the
+				# comparison, so a row differing only by its blanks is *unchanged*
+				# rather than an update that writes the same values back.
+				payload = preserve_existing(hit, payload)
+				changed = self._differing_fields(doctype, hit, payload)
+				if not changed:
 					stats["unchanged"] += 1
-				elif hit["docstatus"] == 1:
-					# Submitted: shift_type and start_date are not editable, so
-					# the only way to correct it is to cancel and replace.
+				elif hit["docstatus"] == 1 and needs_replacement(
+					changed, self._editable_after_submit(doctype)
+				):
+					# Submitted, and the change reaches a field Frappe freezes at
+					# submit (shift_type, start_date): the only way to correct it is
+					# to cancel and replace.
 					self._cancel(doctype, hit["name"])
 					self._insert(doctype, payload, stats)
 					stats["recreated"] += 1

@@ -12,7 +12,7 @@ import logging
 import pandas as pd
 
 from .. import settings
-from . import keys, location, presence
+from . import keys, location, presence, roles
 
 log = logging.getLogger(__name__)
 
@@ -83,7 +83,9 @@ def build(person_level: pd.DataFrame, spine: pd.DataFrame) -> pd.DataFrame:
 
 	`shift_location` names a (branch, discipline) pair, because that is what
 	autoshift reads back off it. The branch is settled per half-day by
-	`pipeline.location`; the discipline is the person's own, from the spine.
+	`pipeline.location`; the discipline is the person's own, from the spine. The
+	Scheduling Role rides along on the record itself, since a location cannot say
+	which of somebody's roles they were working.
 	"""
 	if person_level.empty:
 		return pd.DataFrame()
@@ -107,6 +109,10 @@ def build(person_level: pd.DataFrame, spine: pd.DataFrame) -> pd.DataFrame:
 			"start_date": df["date"],
 			"end_date": df["date"],
 			"shift_location": shift_location,
+			# The role the half-day was worked in. autoshift used to recover this from
+			# the location's discipline and can no longer do so — somebody may hold two
+			# roles there — so the record carries it (see `roles.primary_roles`).
+			"custom_scheduling_role": df["personnel_no"].map(roles.primary_roles(spine)),
 			"status": "Active",
 			"docstatus": 1,
 		}

@@ -7,5 +7,6 @@ that would need a bench context — stage 2 does not change either way.
 
 from .base import Sink
 from .csv_sink import CsvSink
+from .policy import is_blank, needs_replacement, preserve_existing
 
-__all__ = ["CsvSink", "Sink"]
+__all__ = ["CsvSink", "Sink", "is_blank", "needs_replacement", "preserve_existing"]

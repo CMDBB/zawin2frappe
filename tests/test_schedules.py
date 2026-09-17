@@ -50,12 +50,18 @@ def worked(personnel_no, by_week, weeks: int = 40, branch: str = "Main") -> pd.D
 
 
 def spine(**people) -> pd.DataFrame:
-	"""{personnel_no: (service_no, department)}."""
+	"""{personnel_no: (service_no, department)}.
+
+	`discipline_resolved` is the plain discipline `pipeline.discipline.refine` settles
+	on; `department` is the same thing as a Frappe link. They coincide here because
+	nothing in these tests goes near a site.
+	"""
 	return pd.DataFrame(
 		{
 			"personnel_no": list(people),
 			"service_no": [v[0] for v in people.values()],
 			"department": [v[1] for v in people.values()],
+			"discipline_resolved": [v[1] for v in people.values()],
 			"schedulable": [True] * len(people),
 		}
 	).astype({"schedulable": "bool"})
@@ -245,3 +251,34 @@ def test_every_assignment_points_at_a_schedule_that_was_emitted():
 	out = emit(frame, {"P1": (BINDING_SERVICE, "Omnipractice"), "P2": (BINDING_SERVICE, "Orthodontics")})
 	assert set(out["Shift Schedule Assignment"]["shift_schedule"]) <= set(out["Shift Schedule"]["name"])
 	assert out["Shift Schedule Assignment"]["custom_zawin_key"].is_unique
+
+
+# --- the role the rota is worked in ----------------------------------------
+
+
+def test_a_rota_names_the_role_its_shifts_are_worked_in():
+	"""autoshift reads the role off the record: a Shift Location names a discipline,
+	and a discipline no longer names one role."""
+	frame = worked("P1", lambda i: [(0, "am"), (2, "am")])
+	out = emit(frame, {"P1": (BINDING_SERVICE, "Omnipractice")})
+
+	assert list(out["Shift Schedule Assignment"]["custom_scheduling_role"]) == ["Dentist"]
+
+
+def test_a_role_ambiguous_across_disciplines_is_named_for_its_discipline():
+	"""Two people sharing a designation in different disciplines hold different roles,
+	and `roles._role_namer` is the one place that decides what they are called."""
+	frame = pd.concat(
+		[
+			worked("P1", lambda i: [(0, "am")]),
+			worked("P2", lambda i: [(1, "am")]),
+		],
+		ignore_index=True,
+	)
+	people = {"P1": (BINDING_SERVICE, "Omnipractice"), "P2": (BINDING_SERVICE, "Orthodontics")}
+	out = emit(frame, people)
+
+	assert set(out["Shift Schedule Assignment"]["custom_scheduling_role"]) == {
+		"Dentist (Omnipractice)",
+		"Dentist (Orthodontics)",
+	}

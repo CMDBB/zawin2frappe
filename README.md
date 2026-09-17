@@ -26,6 +26,15 @@ identifies the settled weekly pattern a schedule was built from; and
 actually calls someone by on a paper roster. Anyone with no agenda column has none, so
 that field stays editable.
 
+autoshift also owns `custom_scheduling_role` on `Shift Assignment` and on
+`Shift Schedule Assignment`, and this import fills it in: the role a half-day was worked
+in. It used to be inferred from the Shift Location's discipline, which stopped working
+once a person could hold several roles in one discipline — a location says where somebody
+stood, never which of their capabilities they were exercising. The value is their
+*primary* role, the one their designation and resolved discipline give them, so it agrees
+by construction with the `Employee Scheduling Role` rows written alongside. Secondary
+roles (a colour rule, prophylaxis) are never guessed at here; a planner assigns those.
+
 autoshift, in turn, adds `Shift Schedule Assignment.custom_unconfirmed`, and this
 import sets it on every pattern it writes. The agenda is the best evidence of
 someone's week, but it is not a legally binding record of it, so an imported pattern
@@ -282,6 +291,25 @@ corrections via its `overrides` block.
 **These name identifiable people. Keep them out of public repositories**, along
 with the profile itself: service numbering, branch names and agenda layout
 together fingerprint a practice.
+
+### What a re-import will not overwrite
+
+The extract is a partial view of a practice. It knows what ZaWin recorded and nothing
+about what anybody has since entered, corrected or curated in Frappe, so the loader
+reconciles rather than replaces (`core.sinks.policy`, tested without a bench):
+
+- **A blank never erases a stored value.** An absent value means the extract has nothing
+  to say, not that the field should be empty — the two are indistinguishable in a CSV and
+  very different in a record. `Employee.custom_initials` is the case that named the rule:
+  it is filled in by hand for anyone with no agenda column, and every re-import used to
+  wipe it. A zero is *not* a blank: a `Check` of 0 is a decision the extract has made.
+- **A submitted record is only rebuilt when the change demands it.** Frappe freezes most
+  fields at submit, so a corrected `shift_type` or `start_date` still means cancel and
+  recreate. A change confined to fields marked `allow_on_submit` — a corrected Scheduling
+  Role, say — is written in place, and the record keeps its name, its links and its
+  comments.
+- **A record the extract no longer produces is left alone**, and a gold-standard rota is
+  never written over (above).
 
 ## Standalone use
 

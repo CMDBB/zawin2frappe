@@ -61,7 +61,7 @@ import logging
 import pandas as pd
 
 from .. import settings
-from . import binding, location
+from . import binding, location, roles
 
 log = logging.getLogger(__name__)
 
@@ -147,6 +147,7 @@ def build(
 				"company",
 				"shift_schedule",
 				"shift_location",
+				"custom_scheduling_role",
 				"shift_status",
 				"enabled",
 				"create_shifts_after",
@@ -178,6 +179,7 @@ def build(
 	company = settings.get().company
 	shift_types = _shift_type_names()
 	discipline = spine.set_index("personnel_no")["department"]
+	primary_role = roles.primary_roles(spine)
 	schedules: dict[str, dict] = {}
 	assignments: list[dict] = []
 
@@ -221,6 +223,9 @@ def build(
 				"company": company,
 				"shift_schedule": name,
 				"shift_location": location.location_name(branch, discipline.get(personnel_no)),
+				# Carried onto every Shift Assignment autoshift materialises from this
+				# rota, so the shifts a settled week generates name their own role.
+				"custom_scheduling_role": primary_role.get(personnel_no),
 				"shift_status": "Active" if usable else "Inactive",
 				"enabled": 0,
 				"create_shifts_after": _anchor(create_shifts_after, cycle, phase),

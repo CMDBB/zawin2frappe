@@ -40,12 +40,16 @@ see its docstring for the split between the two.
 
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
 
 from .. import extract, settings
 from ..roster import funktion_prophylaxis
 from .binding import OVERRIDE_INHERIT, OVERRIDE_NOT_BINDING
 from .employees import department_link
+
+log = logging.getLogger(__name__)
 
 #: Rooms one holder covers, absent an explicit override in the rule.
 DEFAULT_MAX_ROOMS = 1
@@ -105,6 +109,37 @@ def _binding_roles(spine: pd.DataFrame) -> set[str]:
 	if funktion_prophylaxis() is not None and prof.zawin.get("prophylaxis_assignments_binding", True):
 		out.add(PROPHYLAXIS_ROLE)
 	return out
+
+
+def primary_roles(spine: pd.DataFrame) -> pd.Series:
+	"""personnel_no -> the Scheduling Role that person's own shifts are worked in.
+
+	The role their designation and resolved discipline give them — the same name
+	`build_employee_scheduling_roles` writes as their primary row, computed from the
+	same `_role_namer` over the same schedulable subset so the two cannot disagree.
+
+	autoshift reads it off `Shift Assignment.custom_scheduling_role` rather than
+	inferring one from the Shift Location, which it can no longer do: a person may
+	hold several roles in one discipline, and which one a half-day was worked in is
+	exactly what the location cannot say. Secondary roles (a colour rule, prophylaxis)
+	are deliberately not considered here — the agenda records where somebody was, never
+	which of their capabilities they were exercising, so the primary role is the only
+	honest answer the extract has.
+	"""
+	if "discipline_resolved" not in spine:
+		# `pipeline.discipline.refine` is what puts it there, and `core.build` runs that
+		# before either builder. A spine without it can still be written — the field is
+		# simply left blank, autoshift falls back to inferring a role, and the sink's
+		# blank rule keeps whatever is already on the record.
+		log.warning("no discipline_resolved on the spine; Shift Assignments will name no role")
+		return pd.Series(dtype=object)
+	schedulable = spine[spine["schedulable"]]
+	designation, ctx = _role_namer(schedulable)
+	names = [
+		ctx["name"](discipline, designation_)
+		for discipline, designation_ in zip(schedulable["discipline_resolved"], designation, strict=False)
+	]
+	return pd.Series(names, index=schedulable["personnel_no"]).dropna()
 
 
 def build_scheduling_roles(spine: pd.DataFrame) -> pd.DataFrame:
